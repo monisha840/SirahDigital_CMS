@@ -1,0 +1,20 @@
+/*
+ * Admin theming.
+ *
+ * Kept deliberately thin. The admin is a tool for the team, not a brand
+ * surface, and every override here is one more thing to re-check on a Payload
+ * upgrade. The accent is set to the site's cyan so the two do not feel like
+ * unrelated products.
+ */
+:root {
+  --theme-success-500: #22d3ee;
+}
+
+.template-default__wrap {
+  // Long field descriptions are the main way this CMS explains itself to a
+  // non-technical editor. Default styling renders them very faint.
+  .field-description {
+    opacity: 0.85;
+    line-height: 1.5;
+  }
+}
