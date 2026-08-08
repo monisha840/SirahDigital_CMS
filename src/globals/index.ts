@@ -43,6 +43,22 @@ export const SiteSettings: GlobalConfig = {
               admin: { description: 'tel: link, digits only, e.g. tel:+919789961631' },
             },
             {
+              name: 'whatsappNumber',
+              type: 'text',
+              admin: {
+                description:
+                  'Office WhatsApp, digits only with country code, e.g. 919789961631. No +, spaces or dashes — the gateway rejects them.',
+              },
+            },
+            {
+              name: 'bookingPath',
+              type: 'text',
+              admin: {
+                description:
+                  'TidyCal booking type as "<username>/<slug>", e.g. sirahdigital/45-min-strategy-call. Availability (Mon-Sat 10:00-20:00 IST, Sunday closed) is set in the TidyCal dashboard, not here.',
+              },
+            },
+            {
               name: 'address',
               type: 'array',
               labels: { singular: 'Line', plural: 'Address lines' },
