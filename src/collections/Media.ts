@@ -1,4 +1,5 @@
 import type { CollectionConfig } from 'payload'
+import { APIError } from 'payload'
 import sharp from 'sharp'
 import { canPublish, isAdmin, isLoggedIn } from '../access'
 import { sniff, isRaster, MAX_UPLOAD_BYTES } from '../lib/fileSafety'
@@ -80,6 +81,30 @@ export const Media: CollectionConfig = {
       type: 'text',
       admin: { description: 'Photographer or licence, where one is required.' },
     },
+    {
+      /*
+       * The original /public path this asset was imported from, e.g.
+       * "/carousel/01.jpg".
+       *
+       * The seed needs a stable key to recognise an already-imported file, and
+       * `filename` cannot be it: uploads are re-encoded to WebP, so a source
+       * called 01.jpg is stored as 01.webp and a lookup by the source name
+       * never matches. Every re-run then re-uploaded, and Payload
+       * de-duplicated the name to 01-1.webp — 30 files silently became 60.
+       *
+       * Empty for anything uploaded through the admin, which is correct: only
+       * migrated assets have an origin path.
+       */
+      name: 'sourcePath',
+      type: 'text',
+      unique: true,
+      index: true,
+      admin: {
+        readOnly: true,
+        position: 'sidebar',
+        description: 'Set by the migration for assets imported from the old /public folder.',
+      },
+    },
   ],
 
   hooks: {
@@ -91,7 +116,9 @@ export const Media: CollectionConfig = {
 
         const result = sniff(file.data as Buffer)
         if (!result.ok) {
-          throw new Error(result.reason)
+          // APIError with an explicit status, so the editor is told what is wrong.
+          // A plain Error surfaces as a 500 "Something went wrong."
+          throw new APIError(result.reason, 400)
         }
 
         // Trust the sniffed type over anything the client claimed.
@@ -131,44 +158,64 @@ export const Media: CollectionConfig = {
          *
          * This is the `entry_media` guard from §6 of the architecture doc: the
          * classic CMS failure is someone tidying the library and silently
-         * blanking six live pages. Payload tracks relationships, so we ask it
-         * which documents point here before allowing the delete.
+         * blanking six live pages.
+         *
+         * ── Each collection is queried on the fields it actually has ───────
+         * The first version of this ORed every known upload field name across
+         * every collection. Querying `services` for `image` — a field it does
+         * not have — makes Payload throw, and a `.catch(() => null)` swallowed
+         * it. Every query failed, the dependents list stayed empty, and the
+         * guard reported "safe to delete" for an image on a live page. It read
+         * as working precisely because nothing ever errored out loud.
+         *
+         * Hence: an explicit map, and failures are logged and treated as
+         * "assume referenced" rather than "assume free".
          */
-        const collectionsWithMedia = [
-          'industries', 'products', 'case-studies', 'clients', 'testimonials',
-          'posts', 'authors', 'team', 'insights', 'carousel-cards', 'pages',
-        ] as const
+        const MEDIA_REFS: Record<string, string[]> = {
+          industries: ['image', 'seo.ogImage'],
+          products: ['heroImage', 'seo.ogImage'],
+          'case-studies': ['cover', 'seo.ogImage'],
+          clients: ['logo'],
+          testimonials: ['avatar'],
+          posts: ['cover', 'seo.ogImage'],
+          authors: ['photo'],
+          team: ['photo'],
+          insights: ['cover'],
+          'carousel-cards': ['image'],
+          services: ['seo.ogImage'],
+          categories: ['seo.ogImage'],
+          pages: ['seo.ogImage'],
+        }
 
         const dependents: string[] = []
 
-        for (const collection of collectionsWithMedia) {
-          const found = await req.payload.find({
-            collection,
-            depth: 0,
-            limit: 3,
-            pagination: false,
-            overrideAccess: true,
-            where: {
-              or: [
-                { image: { equals: id } },
-                { cover: { equals: id } },
-                { photo: { equals: id } },
-                { logo: { equals: id } },
-                { avatar: { equals: id } },
-                { heroImage: { equals: id } },
-                { 'seo.ogImage': { equals: id } },
-              ],
-            },
-          }).catch(() => null)
-
-          if (found?.docs?.length) {
-            dependents.push(`${collection} (${found.docs.length}${found.docs.length === 3 ? '+' : ''})`)
+        for (const [collection, fields] of Object.entries(MEDIA_REFS)) {
+          try {
+            const found = await req.payload.find({
+              collection: collection as never,
+              depth: 0,
+              limit: 3,
+              overrideAccess: true,
+              req,
+              where: { or: fields.map((f) => ({ [f]: { equals: id } })) } as never,
+            })
+            if (found.docs.length) {
+              dependents.push(`${collection} (${found.docs.length}${found.docs.length === 3 ? '+' : ''})`)
+            }
+          } catch (err) {
+            // Fail closed. A guard that cannot verify must not green-light a
+            // destructive action.
+            req.payload.logger.error(
+              `Media delete guard could not check ${collection}: ${(err as Error).message}`,
+            )
+            dependents.push(`${collection} (check failed)`)
           }
         }
 
         if (dependents.length) {
-          throw new Error(
+          throw new APIError(
             `This image is still used by: ${dependents.join(', ')}. Replace it there first, then delete it here.`,
+            400,
           )
         }
       },

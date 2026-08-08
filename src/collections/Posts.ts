@@ -2,7 +2,7 @@ import type { CollectionConfig } from 'payload'
 import { canEditContent, isAdmin, publishedOnly } from '../access'
 import { slugField } from '../fields/slug'
 import { seoField } from '../fields/seo'
-import { versioned, statusGate } from '../fields/publishing'
+import { versioned, enforcePublishPermission } from '../fields/publishing'
 import { revalidate } from '../hooks/revalidate'
 
 /** Rough reading time from the Lexical AST. Counts text nodes, ignores markup. */
@@ -42,6 +42,7 @@ export const Posts: CollectionConfig = {
     afterChange: [revalidate(['posts'])],
     afterDelete: [revalidate(['posts'])],
     beforeChange: [
+      enforcePublishPermission,
       ({ data }) => {
         // ~220 wpm is the usual estimate for technical prose.
         if (data?.body) {
@@ -57,7 +58,6 @@ export const Posts: CollectionConfig = {
     ],
   },
   fields: [
-    statusGate,
     slugField('title'),
     {
       name: 'publishedAt',

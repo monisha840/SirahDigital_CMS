@@ -2,7 +2,7 @@ import type { CollectionConfig } from 'payload'
 import { canEditContent, isAdmin, publishedOnly } from '../access'
 import { slugField } from '../fields/slug'
 import { seoField } from '../fields/seo'
-import { versioned, statusGate, orderField } from '../fields/publishing'
+import { versioned, orderField, enforcePublishPermission } from '../fields/publishing'
 import { revalidate } from '../hooks/revalidate'
 
 /**
@@ -31,9 +31,8 @@ export const Authors: CollectionConfig = {
   admin: { group: 'Blog', useAsTitle: 'name', defaultColumns: ['name', 'role'] },
   versions: versioned,
   access: { read: publishedOnly, create: canEditContent, update: canEditContent, delete: isAdmin },
-  hooks: { afterChange: [revalidate(['authors'])], afterDelete: [revalidate(['authors'])] },
+  hooks: { beforeChange: [enforcePublishPermission], afterChange: [revalidate(['authors'])], afterDelete: [revalidate(['authors'])] },
   fields: [
-    statusGate,
     slugField('name'),
     { name: 'name', type: 'text', required: true },
     { name: 'role', type: 'text' },
@@ -72,9 +71,8 @@ export const Clients: CollectionConfig = {
   admin: { group: 'Content', useAsTitle: 'name', defaultColumns: ['name', 'featured', 'order', '_status'] },
   versions: versioned,
   access: { read: publishedOnly, create: canEditContent, update: canEditContent, delete: isAdmin },
-  hooks: { afterChange: [revalidate(['clients'])], afterDelete: [revalidate(['clients'])] },
+  hooks: { beforeChange: [enforcePublishPermission], afterChange: [revalidate(['clients'])], afterDelete: [revalidate(['clients'])] },
   fields: [
-    statusGate,
     orderField,
     slugField('name'),
     { name: 'name', type: 'text', required: true },
@@ -111,9 +109,8 @@ export const Team: CollectionConfig = {
   admin: { group: 'Content', useAsTitle: 'name', defaultColumns: ['name', 'role', 'isFounder', 'order'] },
   versions: versioned,
   access: { read: publishedOnly, create: canEditContent, update: canEditContent, delete: isAdmin },
-  hooks: { afterChange: [revalidate(['team'])], afterDelete: [revalidate(['team'])] },
+  hooks: { beforeChange: [enforcePublishPermission], afterChange: [revalidate(['team'])], afterDelete: [revalidate(['team'])] },
   fields: [
-    statusGate,
     orderField,
     { name: 'name', type: 'text', required: true },
     { name: 'role', type: 'text', required: true },
@@ -145,9 +142,8 @@ export const Insights: CollectionConfig = {
   },
   versions: versioned,
   access: { read: publishedOnly, create: canEditContent, update: canEditContent, delete: isAdmin },
-  hooks: { afterChange: [revalidate(['insights'])], afterDelete: [revalidate(['insights'])] },
+  hooks: { beforeChange: [enforcePublishPermission], afterChange: [revalidate(['insights'])], afterDelete: [revalidate(['insights'])] },
   fields: [
-    statusGate,
     orderField,
     { name: 'title', type: 'text', required: true },
     {
@@ -193,9 +189,8 @@ export const CarouselCards: CollectionConfig = {
   },
   versions: versioned,
   access: { read: publishedOnly, create: canEditContent, update: canEditContent, delete: isAdmin },
-  hooks: { afterChange: [revalidate(['carousel-cards'])], afterDelete: [revalidate(['carousel-cards'])] },
+  hooks: { beforeChange: [enforcePublishPermission], afterChange: [revalidate(['carousel-cards'])], afterDelete: [revalidate(['carousel-cards'])] },
   fields: [
-    statusGate,
     orderField,
     { name: 'image', type: 'upload', relationTo: 'media', required: true },
     {

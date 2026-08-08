@@ -297,7 +297,16 @@ export const TransformationStory: GlobalConfig = {
         {
           name: 'statusTone',
           type: 'select',
-          options: ['alert', 'neutral', 'positive'],
+          defaultValue: 'bolt',
+          options: [
+            { label: 'Alert (warning triangle)', value: 'alert' },
+            { label: 'Bolt (lightning)', value: 'bolt' },
+            { label: 'Rocket', value: 'rocket' },
+          ],
+          admin: {
+            description:
+              'Picks the glyph on the status strip. These three are the only ones drawn — see AnimatedStatus.jsx.',
+          },
         },
       ],
     },

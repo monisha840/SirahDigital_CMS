@@ -139,13 +139,25 @@ export const Users: CollectionConfig = {
   hooks: {
     afterLogin: [
       async ({ req, user }) => {
-        // Stamped without triggering hooks or access checks — this is
-        // bookkeeping, not an editorial change.
+        /*
+         * Stamp the login time.
+         *
+         * `req` MUST be passed through. Without it Payload opens a second
+         * transaction, which then waits on the row lock the still-open login
+         * transaction is holding — the two deadlock, and Postgres kills the
+         * query at `statement_timeout`. The symptom is a login that hangs for
+         * two minutes and returns a bare 500, with the real cause
+         * ("canceling statement due to statement timeout") only visible in the
+         * server log.
+         *
+         * Passing `req` joins the existing transaction instead.
+         */
         await req.payload.update({
           collection: 'users',
           id: user.id,
           data: { lastLoginAt: new Date().toISOString() },
           overrideAccess: true,
+          req,
           context: { skipRevalidate: true },
         })
       },

@@ -1,6 +1,6 @@
 import type { CollectionConfig } from 'payload'
 import { canEditContent, isAdmin, publishedOnly } from '../access'
-import { versioned, statusGate, orderField } from '../fields/publishing'
+import { versioned, orderField, enforcePublishPermission } from '../fields/publishing'
 import { revalidate } from '../hooks/revalidate'
 
 /**
@@ -26,11 +26,11 @@ export const Testimonials: CollectionConfig = {
     delete: isAdmin,
   },
   hooks: {
+    beforeChange: [enforcePublishPermission],
     afterChange: [revalidate(['testimonials'])],
     afterDelete: [revalidate(['testimonials'])],
   },
   fields: [
-    statusGate,
     orderField,
     {
       name: 'featured',

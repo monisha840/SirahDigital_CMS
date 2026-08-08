@@ -2,7 +2,7 @@ import type { CollectionConfig } from 'payload'
 import { canEditContent, isAdmin, publishedOnly } from '../access'
 import { slugField } from '../fields/slug'
 import { seoField } from '../fields/seo'
-import { versioned, statusGate, orderField } from '../fields/publishing'
+import { versioned, orderField, enforcePublishPermission } from '../fields/publishing'
 import { revalidate } from '../hooks/revalidate'
 
 /**
@@ -33,11 +33,11 @@ export const CaseStudies: CollectionConfig = {
     delete: isAdmin,
   },
   hooks: {
+    beforeChange: [enforcePublishPermission],
     afterChange: [revalidate(['case-studies'])],
     afterDelete: [revalidate(['case-studies'])],
   },
   fields: [
-    statusGate,
     orderField,
     slugField('title'),
     {

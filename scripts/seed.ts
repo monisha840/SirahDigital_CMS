@@ -34,38 +34,47 @@ const load = async (file: string) => import(`file://${path.join(DATA, file)}`)
 const log = (msg: string) => console.log(`  ${msg}`)
 const section = (msg: string) => console.log(`\n── ${msg} ${'─'.repeat(Math.max(0, 60 - msg.length))}`)
 
-/** Upsert by a natural key. Returns the record id. */
+type Doc = { id: string | number }
+
+/**
+ * Upsert by a natural key. Returns the record id.
+ *
+ * The collection slug is a runtime string here, so Payload's per-collection
+ * generics collapse to `never` and the doc type is lost. That is inherent to a
+ * migration that walks a list of collections; the casts are confined to this
+ * one helper rather than sprayed across every call site.
+ */
 const upsert = async (
   payload: Payload,
   collection: string,
   where: Record<string, unknown>,
   data: Record<string, unknown>,
 ): Promise<string | number> => {
-  const found = await payload.find({
+  const found = (await payload.find({
     collection: collection as never,
     where: where as never,
     limit: 1,
     depth: 0,
     overrideAccess: true,
-  })
+  })) as unknown as { docs: Doc[] }
 
   if (found.docs.length > 0) {
-    const updated = await payload.update({
+    const updated = (await payload.update({
       collection: collection as never,
       id: found.docs[0].id,
       data: data as never,
       overrideAccess: true,
       context: { skipRevalidate: true },
-    })
+    })) as unknown as Doc
     return updated.id
   }
 
-  const created = await payload.create({
+  const created = (await payload.create({
     collection: collection as never,
     data: data as never,
     overrideAccess: true,
     context: { skipRevalidate: true },
-  })
+  })) as unknown as Doc
   return created.id
 }
 
@@ -89,7 +98,6 @@ const uploadMedia = async (
   if (mediaCache.has(publicPath)) return mediaCache.get(publicPath)!
 
   const abs = path.join(PUBLIC, publicPath.replace(/^\//, ''))
-  const filename = path.basename(abs)
 
   if (!fs.existsSync(abs)) {
     log(`! missing file, skipped: ${publicPath}`)
@@ -97,9 +105,17 @@ const uploadMedia = async (
     return null
   }
 
+  /*
+   * Matched on `sourcePath`, NOT on filename.
+   *
+   * Uploads are re-encoded to WebP, so a source called 01.jpg lands as
+   * 01.webp. Looking it up by the source name never matched, so every re-run
+   * uploaded it again and Payload de-duplicated to 01-1.webp. That is what
+   * turned 30 files into 60.
+   */
   const existing = await payload.find({
     collection: 'media',
-    where: { filename: { equals: filename } },
+    where: { sourcePath: { equals: publicPath } },
     limit: 1,
     depth: 0,
     overrideAccess: true,
@@ -112,12 +128,12 @@ const uploadMedia = async (
 
   const created = await payload.create({
     collection: 'media',
-    data: { alt },
+    data: { alt, sourcePath: publicPath },
     filePath: abs,
     overrideAccess: true,
     context: { skipRevalidate: true },
   })
-  log(`+ media ${filename}`)
+  log(`+ media ${path.basename(abs)}`)
   mediaCache.set(publicPath, created.id)
   return created.id
 }
@@ -388,7 +404,7 @@ const run = async () => {
       scenes: (SCENES as {
         id: string; tab: string; tabLong: string; phase: string; accent: string
         accentSoft: string; title: string; body: string; points: string[]
-        status: string; statusTone: string
+        status: string; statusTone: 'alert' | 'bolt' | 'rocket'
       }[]).map((s) => ({
         sceneId: s.id, tab: s.tab, tabLong: s.tabLong, phase: s.phase,
         accent: s.accent, accentSoft: s.accentSoft, title: s.title, body: s.body,

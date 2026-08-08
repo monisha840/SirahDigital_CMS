@@ -2,7 +2,7 @@ import type { CollectionConfig } from 'payload'
 import { canEditContent, isAdmin, publishedOnly } from '../access'
 import { slugField } from '../fields/slug'
 import { seoField } from '../fields/seo'
-import { versioned, statusGate } from '../fields/publishing'
+import { versioned, enforcePublishPermission } from '../fields/publishing'
 import { revalidate } from '../hooks/revalidate'
 import { pageSections } from '../blocks'
 
@@ -31,11 +31,11 @@ export const Pages: CollectionConfig = {
     delete: isAdmin,
   },
   hooks: {
+    beforeChange: [enforcePublishPermission],
     afterChange: [revalidate(['pages'])],
     afterDelete: [revalidate(['pages'])],
   },
   fields: [
-    statusGate,
     slugField('title'),
     { name: 'title', type: 'text', required: true },
     {

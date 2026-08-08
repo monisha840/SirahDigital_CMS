@@ -2,7 +2,7 @@ import type { CollectionConfig } from 'payload'
 import { canEditContent, canPublish, isAdmin, publishedOnly } from '../access'
 import { slugField } from '../fields/slug'
 import { seoField } from '../fields/seo'
-import { versioned, statusGate, orderField } from '../fields/publishing'
+import { versioned, orderField, enforcePublishPermission } from '../fields/publishing'
 import { revalidate } from '../hooks/revalidate'
 
 /**
@@ -31,11 +31,11 @@ export const Services: CollectionConfig = {
     delete: isAdmin,
   },
   hooks: {
+    beforeChange: [enforcePublishPermission],
     afterChange: [revalidate(['services', 'navigation'])],
     afterDelete: [revalidate(['services', 'navigation'])],
   },
   fields: [
-    statusGate,
     orderField,
     slugField('title'),
     {
@@ -95,6 +95,7 @@ export const Services: CollectionConfig = {
                 { label: 'Enterprise Dashboard', value: 'enterprise-dashboard' },
                 { label: 'Business Network', value: 'business-network' },
                 { label: 'Document Scanner', value: 'document-scanner' },
+                { label: 'Analytics Sphere', value: 'analytics-sphere' },
               ],
               admin: {
                 description:
