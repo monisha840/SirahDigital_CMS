@@ -31,8 +31,21 @@ const SIGNATURES: Array<{ mime: string; test: (b: Buffer) => boolean }> = [
   { mime: 'application/pdf', test: (b) => ascii(b, '%PDF-') },
 ]
 
-/** 20 MB, per cms_architecture.md §13. */
-export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+/*
+ * 4 MB. Architecture §13 specifies 20 MB, but Vercel caps a serverless
+ * function's request body at roughly 4.5 MB, so anything above this never
+ * reaches the sniff below — the platform rejects it first, with an opaque
+ * 413 the editor cannot act on. Refusing at 4 MB makes the limit honest and
+ * the error message true.
+ *
+ * The alternative — clientUploads on the S3 adapter, which PUTs straight to
+ * the bucket and bypasses the cap — was rejected deliberately: with it the
+ * bytes never reach the server, so `req.file` is undefined and both the
+ * polyglot sniff and blurDataURL generation in Media.ts silently no-op.
+ * Losing the sniff to gain large uploads is a bad trade for a site that
+ * accepts mp4 and PDF. Host video externally and reference it instead.
+ */
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024
 
 export const sniff = (buffer: Buffer): SniffResult => {
   if (!buffer || buffer.length < 12) {

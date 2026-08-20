@@ -21,10 +21,10 @@ import { StrikethroughFeatureClient as StrikethroughFeatureClient_e70f5e05f09f93
 import { UnderlineFeatureClient as UnderlineFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { BoldFeatureClient as BoldFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { ItalicFeatureClient as ItalicFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
-import { Icon as Icon_c6286fbc7f62f2ce3ef9c604e9c02147 } from '../../../components/graphics/Icon'
-import { Logo as Logo_e577ad08317d2e8977edf3e679038fc8 } from '../../../components/graphics/Logo'
-import { AvailabilityNavLink as AvailabilityNavLink_758b30e533df41b02968f6092757f1cb } from '../../../components/admin/AvailabilityNavLink'
-import { AvailabilityView as AvailabilityView_da1fd51d8bf7071d02c3eaf9cc227a07 } from '../../../components/admin/AvailabilityView'
+import { Icon as Icon_c6286fbc7f62f2ce3ef9c604e9c02147 } from '../../components/graphics/Icon'
+import { Logo as Logo_e577ad08317d2e8977edf3e679038fc8 } from '../../components/graphics/Logo'
+import { AvailabilityNavLink as AvailabilityNavLink_758b30e533df41b02968f6092757f1cb } from '../../components/admin/AvailabilityNavLink'
+import { AvailabilityView as AvailabilityView_da1fd51d8bf7071d02c3eaf9cc227a07 } from '../../components/admin/AvailabilityView'
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
 
 /** @type import('payload').ImportMap */

@@ -23,7 +23,7 @@ import React from 'react'
  */
 import '@payloadcms/next/css'
 
-import { importMap } from './admin/importMap.js'
+import { importMap } from './importMap.js'
 import './custom.scss'
 
 type Args = {
