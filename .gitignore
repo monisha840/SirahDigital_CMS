@@ -9,3 +9,10 @@ next-env.d.ts
 /media
 /.turbo
 *.tsbuildinfo
+
+# Every .env variant, including backups like .env.bak-* .
+.env*
+!.env.example
+
+# Debug artefacts holding real calendar data / PII
+*-backup.json

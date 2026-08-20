@@ -6,13 +6,19 @@ import { versioned, orderField, enforcePublishPermission } from '../fields/publi
 import { revalidate } from '../hooks/revalidate'
 
 /**
- * The /work page.
+ * The case-study band at the bottom of /products.
  *
  * `PRODUCTION_PROJECTS` and `DEVELOPMENT_PROJECTS` were two arrays with
  * different shapes — production had `client` and `impact`, development had
  * `phase` and `stack`. One collection with a `stage` discriminator, because
  * they are the same thing at different maturity and the site renders them in
  * two rows off one query.
+ *
+ * These used to live on their own /work route. That page merged into
+ * /products — it listed the same three products that page already carried —
+ * and /work now 301s there. The `stage` discriminator is unaffected: it still
+ * drives the "Live systems" / "In development" split, just further down a
+ * longer page.
  */
 export const CaseStudies: CollectionConfig = {
   slug: 'case-studies',
@@ -22,7 +28,10 @@ export const CaseStudies: CollectionConfig = {
     useAsTitle: 'title',
     defaultColumns: ['title', 'stage', 'client', 'order', '_status'],
     livePreview: {
-      url: ({ data }) => `${process.env.SITE_URL}/work#${data?.slug}`,
+      // The band, not the row: the case-study rows carry no per-slug id, so
+      // `#${slug}` never resolved to anything and the preview just opened at
+      // the top of the page. `#case-studies` is an anchor that exists.
+      url: () => `${process.env.SITE_URL}/products#case-studies`,
     },
   },
   versions: versioned,

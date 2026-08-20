@@ -471,7 +471,7 @@ const run = async () => {
           heading: 'Company',
           links: [
             { label: 'About', href: '/about' },
-            { label: 'Work', href: '/work' },
+            { label: 'Work', href: '/products#case-studies' },
             { label: 'Contact', href: '/contact' },
           ],
         },
@@ -496,9 +496,12 @@ const run = async () => {
   log('footer')
 
   // Lifted from next.config.js so they can be changed without a deploy.
+  // /work merged into /products, so the three that used to land there now
+  // point at the page that absorbed it.
   const REDIRECTS = [
-    ['/team', '/about'], ['/process', '/about'], ['/projects', '/work'],
-    ['/portfolio', '/work'], ['/service', '/services'], ['/contact-us', '/contact'],
+    ['/team', '/about'], ['/process', '/about'], ['/projects', '/products'],
+    ['/portfolio', '/products'], ['/service', '/services'], ['/contact-us', '/contact'],
+    ['/work', '/products'],
   ]
   for (const [from, to] of REDIRECTS) {
     await upsert(payload, 'redirects', { from: { equals: from } }, { from, to, permanent: true })

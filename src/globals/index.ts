@@ -405,6 +405,9 @@ export const Homepage: GlobalConfig = {
   fields: [pageSections],
 }
 
+export { MessageTemplates } from './messageTemplates'
+import { MessageTemplates } from './messageTemplates'
+
 export const ALL_GLOBALS = [
   SiteSettings,
   SeoDefaults,
@@ -414,4 +417,5 @@ export const ALL_GLOBALS = [
   Methodology,
   TransformationStory,
   RoiConfig,
+  MessageTemplates,
 ]

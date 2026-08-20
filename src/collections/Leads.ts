@@ -79,6 +79,29 @@ export const Leads: CollectionConfig = {
     { name: 'company', type: 'text' },
     { name: 'message', type: 'textarea', required: true },
 
+    /*
+     * Which products the enquiry named, as titles.
+     *
+     * The contact form has offered this for a while and the API has been sending
+     * it, but there was no column to receive it — Payload drops unknown keys
+     * silently, so every answer was being thrown away on arrival. The site
+     * worked around it by prefixing "[Interested in: ...]" into the message
+     * body, which survived but is not queryable and reads like a hack in the
+     * admin.
+     *
+     * Stored as titles rather than slugs because everything that reads this is a
+     * person: the admin list, the team's WhatsApp, and the booking email.
+     */
+    {
+      name: 'interests',
+      type: 'text',
+      hasMany: true,
+      admin: {
+        description:
+          'Products the enquirer said they were interested in. Empty means the question was skipped; "Not sure yet" means they answered it.',
+      },
+    },
+
     {
       name: 'status',
       type: 'select',

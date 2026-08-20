@@ -83,6 +83,8 @@ export interface Config {
     media: Media;
     redirects: Redirect;
     leads: Lead;
+    bookings: Booking;
+    slots: Slot;
     users: User;
     'payload-kv': PayloadKv;
     'payload-jobs': PayloadJob;
@@ -108,6 +110,8 @@ export interface Config {
     media: MediaSelect<false> | MediaSelect<true>;
     redirects: RedirectsSelect<false> | RedirectsSelect<true>;
     leads: LeadsSelect<false> | LeadsSelect<true>;
+    bookings: BookingsSelect<false> | BookingsSelect<true>;
+    slots: SlotsSelect<false> | SlotsSelect<true>;
     users: UsersSelect<false> | UsersSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-jobs': PayloadJobsSelect<false> | PayloadJobsSelect<true>;
@@ -128,6 +132,8 @@ export interface Config {
     methodology: Methodology;
     'transformation-story': TransformationStory;
     'roi-config': RoiConfig;
+    'message-templates': MessageTemplate;
+    'payload-jobs-stats': PayloadJobsStat;
   };
   globalsSelect: {
     'site-settings': SiteSettingsSelect<false> | SiteSettingsSelect<true>;
@@ -138,6 +144,8 @@ export interface Config {
     methodology: MethodologySelect<false> | MethodologySelect<true>;
     'transformation-story': TransformationStorySelect<false> | TransformationStorySelect<true>;
     'roi-config': RoiConfigSelect<false> | RoiConfigSelect<true>;
+    'message-templates': MessageTemplatesSelect<false> | MessageTemplatesSelect<true>;
+    'payload-jobs-stats': PayloadJobsStatsSelect<false> | PayloadJobsStatsSelect<true>;
   };
   locale: null;
   widgets: {
@@ -146,6 +154,7 @@ export interface Config {
   user: User;
   jobs: {
     tasks: {
+      syncBookings: TaskSyncBookings;
       schedulePublish: TaskSchedulePublish;
       inline: {
         input: unknown;
@@ -1722,6 +1731,10 @@ export interface Lead {
   phone?: string | null;
   company?: string | null;
   message: string;
+  /**
+   * Products the enquirer said they were interested in. Empty means the question was skipped; "Not sure yet" means they answered it.
+   */
+  interests?: string[] | null;
   status?: ('new' | 'contacted' | 'qualified' | 'won' | 'lost') | null;
   /**
    * Who is following this up.
@@ -1795,6 +1808,112 @@ export interface User {
   collection: 'users';
 }
 /**
+ * Consultation calls booked on the website. Personal data — deleted automatically after 24 months. The notification timestamps are what stop a reminder being sent twice; clearing one will cause that message to be re-sent on the next run.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "bookings".
+ */
+export interface Booking {
+  id: number;
+  /**
+   * Google Calendar event id, returned when we created the event. The deduplication key — one booking, one row, however many times the sync job sees it.
+   */
+  calendarEventId: string;
+  /**
+   * The bookable time this call was arranged on. Cancelling either one cancels the other — a booking with its slot still open would let the time be sold twice.
+   */
+  slot?: (number | null) | Slot;
+  inviteeName?: string | null;
+  inviteeEmail: string;
+  /**
+   * WhatsApp number, digits only with country code. Asked for on the booking form and copied from the matching lead — no lead, no number, and the WhatsApp messages for this booking are skipped rather than guessed at.
+   */
+  inviteePhone?: string | null;
+  /**
+   * The enquiry this booking was matched to, by email. The only source of the phone number above.
+   */
+  lead?: (number | null) | Lead;
+  startAt: string;
+  endAt?: string | null;
+  /**
+   * IANA zone the times are rendered in for the invitee. Stored per booking because the row outlives any single default.
+   */
+  timezone?: string | null;
+  /**
+   * The Google Meet link, created with the calendar event. Usually present immediately; when Google reports the conference as pending it arrives on a later sync. The hour-before reminder will not send while this is empty — that message exists to deliver the link.
+   */
+  meetLink?: string | null;
+  /**
+   * Cancelled bookings are skipped by the reminder job rather than deleted.
+   */
+  status?: ('confirmed' | 'cancelled') | null;
+  /**
+   * Set when each message is sent. Empty means "not yet"; a value means "done, never again".
+   */
+  notifications?: {
+    bookedSentAt?: string | null;
+    teamEmailSentAt?: string | null;
+    dayBeforeSentAt?: string | null;
+    hourBeforeSentAt?: string | null;
+    /**
+     * Why the most recent send failed. Kept on the row because a job log scrolls away and this is the first thing anyone asks about a missing reminder.
+     */
+    lastError?: string | null;
+  };
+  /**
+   * Automatically deleted on this date (24 months after the call).
+   */
+  purgeAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Consultation times offered on /book. Manage these from the Availability screen rather than here — this list view is the raw table behind it, kept for inspection and one-off corrections.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "slots".
+ */
+export interface Slot {
+  id: number;
+  /**
+   * YYYY-MM-DD in the slot’s own zone. Server-computed — never edit by hand.
+   */
+  localDate: string;
+  /**
+   * HH:mm, 24-hour, in the slot’s own zone. Server-computed.
+   */
+  localTime: string;
+  /**
+   * The absolute instant. Everything downstream is scheduled from this.
+   */
+  startAt: string;
+  endAt: string;
+  durationMinutes: number;
+  /**
+   * IANA zone the local fields above are expressed in. Stored per row because the row outlives any single default.
+   */
+  timeZone: string;
+  /**
+   * Cancelled slots are withdrawn, not deleted — the row is the only record that the time was ever offered, and deleting a booked one would orphan the call that was arranged on it.
+   */
+  status: 'open' | 'booked' | 'cancelled';
+  /**
+   * Display only. The record lives on the booking.
+   */
+  bookedName?: string | null;
+  bookedAt?: string | null;
+  /**
+   * The call arranged on this slot. Set when the slot is claimed; the invitee’s contact details are on that row, not this one.
+   */
+  booking?: (number | null) | Booking;
+  /**
+   * Who created the slot — the signed-in admin, or "console" for a scripted call.
+   */
+  actor?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
@@ -1863,7 +1982,7 @@ export interface PayloadJob {
     | {
         executedAt: string;
         completedAt: string;
-        taskSlug: 'inline' | 'schedulePublish';
+        taskSlug: 'inline' | 'syncBookings' | 'schedulePublish';
         taskID: string;
         input?:
           | {
@@ -1896,10 +2015,19 @@ export interface PayloadJob {
         id?: string | null;
       }[]
     | null;
-  taskSlug?: ('inline' | 'schedulePublish') | null;
+  taskSlug?: ('inline' | 'syncBookings' | 'schedulePublish') | null;
   queue?: string | null;
   waitUntil?: string | null;
   processing?: boolean | null;
+  meta?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -1973,6 +2101,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'leads';
         value: number | Lead;
+      } | null)
+    | ({
+        relationTo: 'bookings';
+        value: number | Booking;
+      } | null)
+    | ({
+        relationTo: 'slots';
+        value: number | Slot;
       } | null)
     | ({
         relationTo: 'users';
@@ -2933,6 +3069,7 @@ export interface LeadsSelect<T extends boolean = true> {
   phone?: T;
   company?: T;
   message?: T;
+  interests?: T;
   status?: T;
   owner?: T;
   notes?:
@@ -2947,6 +3084,54 @@ export interface LeadsSelect<T extends boolean = true> {
   consentText?: T;
   ipHash?: T;
   purgeAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "bookings_select".
+ */
+export interface BookingsSelect<T extends boolean = true> {
+  calendarEventId?: T;
+  slot?: T;
+  inviteeName?: T;
+  inviteeEmail?: T;
+  inviteePhone?: T;
+  lead?: T;
+  startAt?: T;
+  endAt?: T;
+  timezone?: T;
+  meetLink?: T;
+  status?: T;
+  notifications?:
+    | T
+    | {
+        bookedSentAt?: T;
+        teamEmailSentAt?: T;
+        dayBeforeSentAt?: T;
+        hourBeforeSentAt?: T;
+        lastError?: T;
+      };
+  purgeAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "slots_select".
+ */
+export interface SlotsSelect<T extends boolean = true> {
+  localDate?: T;
+  localTime?: T;
+  startAt?: T;
+  endAt?: T;
+  durationMinutes?: T;
+  timeZone?: T;
+  status?: T;
+  bookedName?: T;
+  bookedAt?: T;
+  booking?: T;
+  actor?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -3014,6 +3199,7 @@ export interface PayloadJobsSelect<T extends boolean = true> {
   queue?: T;
   waitUntil?: T;
   processing?: T;
+  meta?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -3066,6 +3252,14 @@ export interface SiteSetting {
    * tel: link, digits only, e.g. tel:+919789961631
    */
   phoneHref?: string | null;
+  /**
+   * Office WhatsApp, digits only with country code, e.g. 919789961631. No +, spaces or dashes — the gateway rejects them.
+   */
+  whatsappNumber?: string | null;
+  /**
+   * TidyCal booking type as "<username>/<slug>", e.g. sirahdigital/45-min-strategy-call. Availability (Mon-Sat 10:00-20:00 IST, Sunday closed) is set in the TidyCal dashboard, not here.
+   */
+  bookingPath?: string | null;
   /**
    * One entry per line as the footer should break it.
    */
@@ -3684,6 +3878,64 @@ export interface RoiConfig {
   createdAt?: string | null;
 }
 /**
+ * What a person receives after booking a call, and what the team is emailed. Edits apply to the next message sent — messages already delivered are unaffected.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "message-templates".
+ */
+export interface MessageTemplate {
+  id: number;
+  bookedEnabled?: boolean | null;
+  /**
+   * Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form
+   */
+  bookedBody: string;
+  dayBeforeEnabled?: boolean | null;
+  /**
+   * Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form
+   */
+  dayBeforeBody: string;
+  hourBeforeEnabled?: boolean | null;
+  /**
+   * Must contain {{meetLink}}. Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form
+   */
+  hourBeforeBody: string;
+  teamEmailEnabled?: boolean | null;
+  /**
+   * Where booking notifications go.
+   */
+  teamEmailTo: string;
+  /**
+   * Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form
+   */
+  teamEmailSubject: string;
+  /**
+   * Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form
+   */
+  teamEmailBody: string;
+  _status?: ('draft' | 'published') | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-jobs-stats".
+ */
+export interface PayloadJobsStat {
+  id: number;
+  stats?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "site-settings_select".
  */
@@ -3693,6 +3945,8 @@ export interface SiteSettingsSelect<T extends boolean = true> {
   email?: T;
   phone?: T;
   phoneHref?: T;
+  whatsappNumber?: T;
+  bookingPath?: T;
   address?:
     | T
     | {
@@ -4130,6 +4384,36 @@ export interface RoiConfigSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "message-templates_select".
+ */
+export interface MessageTemplatesSelect<T extends boolean = true> {
+  bookedEnabled?: T;
+  bookedBody?: T;
+  dayBeforeEnabled?: T;
+  dayBeforeBody?: T;
+  hourBeforeEnabled?: T;
+  hourBeforeBody?: T;
+  teamEmailEnabled?: T;
+  teamEmailTo?: T;
+  teamEmailSubject?: T;
+  teamEmailBody?: T;
+  _status?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-jobs-stats_select".
+ */
+export interface PayloadJobsStatsSelect<T extends boolean = true> {
+  stats?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "collections_widget".
  */
 export interface CollectionsWidget {
@@ -4137,6 +4421,19 @@ export interface CollectionsWidget {
     [k: string]: unknown;
   };
   width: 'full';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskSyncBookings".
+ */
+export interface TaskSyncBookings {
+  input?: unknown;
+  output: {
+    created?: number | null;
+    updated?: number | null;
+    sent?: number | null;
+    problems?: number | null;
+  };
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -4205,6 +4502,7 @@ export interface TaskSchedulePublish {
           | 'methodology'
           | 'transformation-story'
           | 'roi-config'
+          | 'message-templates'
         )
       | null;
     user?: (number | null) | User;

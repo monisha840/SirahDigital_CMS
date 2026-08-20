@@ -1,0 +1,227 @@
+/*
+ * The Tailwind utilities SlotCalendar uses, written out by hand.
+ *
+ * ── Why not just install Tailwind ────────────────────────────────────────
+ * The component is styled with stock Tailwind classes and the site app has
+ * Tailwind, but the CMS does not — and adding it here would mean a build
+ * pipeline, a config, a content-scanning glob and three dependencies, all to
+ * style one screen. The class list is closed and short: this file is every
+ * utility the component actually references, and nothing else.
+ *
+ * ── Everything is scoped ─────────────────────────────────────────────────
+ * `.sc-scope` wraps the whole calendar. Without it, generic names like `.grid`,
+ * `.border` and `.relative` would be loose in the Payload admin's global
+ * stylesheet and would collide with the vendor's own classes on every other
+ * screen — a class of bug that shows up somewhere unrelated and takes an
+ * afternoon to trace back here.
+ *
+ * ── Keeping it in step ───────────────────────────────────────────────────
+ * If SlotCalendar.tsx is ever re-ported and gains a class, it will render
+ * unstyled rather than wrong. Add the rule here; the values below are Tailwind
+ * v3 defaults, so they can be copied straight from its docs.
+ */
+
+.sc-scope {
+  --sc-gray-50: #f9fafb;
+  --sc-gray-200: #e5e7eb;
+  --sc-gray-300: #d1d5db;
+  --sc-gray-400: #9ca3af;
+  --sc-gray-500: #6b7280;
+  --sc-gray-900: #111827;
+  --sc-blue-50: #eff6ff;
+  --sc-blue-100: #dbeafe;
+  --sc-blue-200: #bfdbfe;
+  --sc-blue-600: #2563eb;
+  --sc-blue-700: #1d4ed8;
+  --sc-red-50: #fef2f2;
+  --sc-red-200: #fecaca;
+  --sc-red-700: #b91c1c;
+  --sc-amber-600: #d97706;
+
+  /*
+   * The calendar carries its own light theme, as the readme says. Payload's
+   * admin can be in dark mode, so the colours below are stated absolutely
+   * rather than inherited — a half-recoloured widget reads as broken, not
+   * as themed.
+   */
+  color: var(--sc-gray-900);
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+/*
+ * A local preflight. Payload's admin styles buttons and inputs globally, and
+ * the component assumes Tailwind has already stripped them back to nothing.
+ */
+.sc-scope button,
+.sc-scope input,
+.sc-scope select {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+}
+.sc-scope button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.sc-scope fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+}
+.sc-scope legend {
+  padding: 0;
+}
+.sc-scope p {
+  margin: 0;
+}
+
+/* ── Layout ──────────────────────────────────────────────────────────── */
+.sc-scope .grid { display: grid; }
+.sc-scope .flex { display: flex; }
+.sc-scope .relative { position: relative; }
+.sc-scope .absolute { position: absolute; }
+.sc-scope .flex-col { flex-direction: column; }
+.sc-scope .flex-wrap { flex-wrap: wrap; }
+.sc-scope .flex-1 { flex: 1 1 0%; }
+.sc-scope .shrink-0 { flex-shrink: 0; }
+.sc-scope .items-center { align-items: center; }
+.sc-scope .justify-between { justify-content: space-between; }
+.sc-scope .justify-center { justify-content: center; }
+.sc-scope .place-items-center { place-items: center; }
+.sc-scope .text-center { text-align: center; }
+.sc-scope .grid-cols-7 { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.sc-scope .min-w-0 { min-width: 0; }
+.sc-scope .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-scope .tabular-nums { font-variant-numeric: tabular-nums; }
+.sc-scope .pointer-events-none { pointer-events: none; }
+.sc-scope .appearance-none { appearance: none; -webkit-appearance: none; }
+.sc-scope .cursor-pointer { cursor: pointer; }
+.sc-scope .top-1\/2 { top: 50%; }
+.sc-scope .right-3 { right: 0.75rem; }
+.sc-scope .bottom-1\.5 { bottom: 0.375rem; }
+.sc-scope .-translate-y-1\/2 { transform: translateY(-50%); }
+
+/* ── Gaps ────────────────────────────────────────────────────────────── */
+.sc-scope .gap-1 { gap: 0.25rem; }
+.sc-scope .gap-1\.5 { gap: 0.375rem; }
+.sc-scope .gap-2 { gap: 0.5rem; }
+.sc-scope .gap-3 { gap: 0.75rem; }
+.sc-scope .gap-5 { gap: 1.25rem; }
+
+/* ── Size ────────────────────────────────────────────────────────────── */
+.sc-scope .h-1 { height: 0.25rem; }
+.sc-scope .w-1 { width: 0.25rem; }
+.sc-scope .h-3 { height: 0.75rem; }
+.sc-scope .w-3 { width: 0.75rem; }
+.sc-scope .h-9 { height: 2.25rem; }
+.sc-scope .w-9 { width: 2.25rem; }
+.sc-scope .w-11 { width: 2.75rem; }
+.sc-scope .h-11 { height: 2.75rem; }
+.sc-scope .w-24 { width: 6rem; }
+.sc-scope .w-full { width: 100%; }
+
+/* ── Spacing ─────────────────────────────────────────────────────────── */
+.sc-scope .p-3 { padding: 0.75rem; }
+.sc-scope .p-6 { padding: 1.5rem; }
+.sc-scope .p-2\.5 { padding: 0.625rem; }
+.sc-scope .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+.sc-scope .px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+.sc-scope .px-4 { padding-left: 1rem; padding-right: 1rem; }
+.sc-scope .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+.sc-scope .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.sc-scope .py-2\.5 { padding-top: 0.625rem; padding-bottom: 0.625rem; }
+.sc-scope .pb-2 { padding-bottom: 0.5rem; }
+.sc-scope .pt-4 { padding-top: 1rem; }
+.sc-scope .pr-9 { padding-right: 2.25rem; }
+.sc-scope .mt-2 { margin-top: 0.5rem; }
+.sc-scope .mt-3 { margin-top: 0.75rem; }
+.sc-scope .mt-4 { margin-top: 1rem; }
+.sc-scope .mt-5 { margin-top: 1.25rem; }
+.sc-scope .mb-1\.5 { margin-bottom: 0.375rem; }
+.sc-scope .mb-2 { margin-bottom: 0.5rem; }
+.sc-scope .mb-3 { margin-bottom: 0.75rem; }
+.sc-scope .mb-5 { margin-bottom: 1.25rem; }
+.sc-scope .ml-2 { margin-left: 0.5rem; }
+
+/* ── Borders ─────────────────────────────────────────────────────────── */
+.sc-scope .border { border-width: 1px; border-style: solid; border-color: var(--sc-gray-200); }
+.sc-scope .border-t { border-top-width: 1px; border-top-style: solid; border-top-color: var(--sc-gray-200); }
+.sc-scope .border-gray-200 { border-color: var(--sc-gray-200); }
+.sc-scope .border-gray-300 { border-color: var(--sc-gray-300); }
+.sc-scope .border-blue-200 { border-color: var(--sc-blue-200); }
+.sc-scope .border-red-200 { border-color: var(--sc-red-200); }
+.sc-scope .border-transparent { border-color: transparent; }
+.sc-scope .rounded-sm { border-radius: 0.125rem; }
+.sc-scope .rounded-md { border-radius: 0.375rem; }
+.sc-scope .rounded-lg { border-radius: 0.5rem; }
+.sc-scope .rounded-full { border-radius: 9999px; }
+
+/* ── Colour ──────────────────────────────────────────────────────────── */
+.sc-scope .bg-white { background-color: #fff; }
+.sc-scope .bg-gray-50 { background-color: var(--sc-gray-50); }
+.sc-scope .bg-blue-50 { background-color: var(--sc-blue-50); }
+.sc-scope .bg-blue-600 { background-color: var(--sc-blue-600); }
+.sc-scope .bg-red-50 { background-color: var(--sc-red-50); }
+.sc-scope .text-white { color: #fff; }
+.sc-scope .text-gray-300 { color: #d1d5db; }
+.sc-scope .text-gray-400 { color: var(--sc-gray-400); }
+.sc-scope .text-gray-500 { color: var(--sc-gray-500); }
+.sc-scope .text-gray-900 { color: var(--sc-gray-900); }
+.sc-scope .text-blue-600 { color: var(--sc-blue-600); }
+.sc-scope .text-red-700 { color: var(--sc-red-700); }
+.sc-scope .text-amber-600 { color: var(--sc-amber-600); }
+
+/* ── Type ────────────────────────────────────────────────────────────── */
+.sc-scope .text-xs { font-size: 0.75rem; line-height: 1rem; }
+.sc-scope .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+.sc-scope .text-base { font-size: 1rem; line-height: 1.5rem; }
+.sc-scope .font-normal { font-weight: 400; }
+.sc-scope .font-medium { font-weight: 500; }
+.sc-scope .font-semibold { font-weight: 600; }
+.sc-scope .underline { text-decoration-line: underline; }
+.sc-scope .underline-offset-4 { text-underline-offset: 4px; }
+
+/* ── Effects ─────────────────────────────────────────────────────────── */
+.sc-scope .shadow-sm { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
+.sc-scope .transition-colors {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+.sc-scope .duration-150 { transition-duration: 150ms; }
+.sc-scope .ease-out { transition-timing-function: cubic-bezier(0, 0, 0.2, 1); }
+
+/* ── Variants ────────────────────────────────────────────────────────── */
+.sc-scope .placeholder\:text-gray-400::placeholder { color: var(--sc-gray-400); }
+
+.sc-scope .hover\:bg-gray-50:hover { background-color: var(--sc-gray-50); }
+.sc-scope .hover\:bg-blue-100:hover { background-color: var(--sc-blue-100); }
+.sc-scope .hover\:bg-blue-700:hover { background-color: var(--sc-blue-700); }
+.sc-scope .hover\:border-gray-400:hover { border-color: var(--sc-gray-400); }
+.sc-scope .hover\:text-red-700:hover { color: var(--sc-red-700); }
+
+.sc-scope .disabled\:cursor-not-allowed:disabled { cursor: not-allowed; }
+.sc-scope .disabled\:opacity-50:disabled { opacity: 0.5; }
+.sc-scope .disabled\:border-gray-200:disabled { border-color: var(--sc-gray-200); }
+.sc-scope .disabled\:bg-gray-50:disabled { background-color: var(--sc-gray-50); }
+.sc-scope .disabled\:text-gray-400:disabled { color: var(--sc-gray-400); }
+
+/*
+ * Responsive. Tailwind's `sm` is 640px and `lg` is 1024px.
+ *
+ * The two-column split is the one piece of layout that genuinely needs the
+ * breakpoint: below it the month grid and the day's time list stack, which is
+ * also how this renders on a phone in the admin.
+ */
+@media (min-width: 640px) {
+  .sc-scope .sm\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+  .sc-scope .lg\:grid-cols-\[minmax\(0\2c 1fr\)_20rem\] {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+  }
+}
