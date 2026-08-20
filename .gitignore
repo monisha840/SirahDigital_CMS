@@ -16,3 +16,6 @@ next-env.d.ts
 
 # Debug artefacts holding real calendar data / PII
 *-backup.json
+
+.vercel
+.env*
