@@ -1,5 +1,29 @@
 import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
 
+/*
+ * Hand-edited after generation: every DROP is IF EXISTS.
+ *
+ * Payload generates `DROP TABLE ... CASCADE` for the removed collections and
+ * then, further down, explicit `DROP CONSTRAINT` / `DROP INDEX` for the
+ * foreign keys and indexes that pointed at those same tables. CASCADE has
+ * already removed them by that point, so the explicit drops hit nothing and
+ * Postgres aborts the whole migration:
+ *
+ *   constraint "pages_rels_posts_fk" of relation "pages_rels" does not exist
+ *
+ * IF EXISTS makes each drop idempotent, which is what the generator should
+ * have emitted.
+ *
+ * The ADD COLUMNs are IF NOT EXISTS for the mirror-image reason: media.prefix
+ * was already created by a dev-mode schema push when S3 storage was switched
+ * on, so the generated ADD failed with "column already exists". Anything this
+ * database picked up from a push before migrations existed will collide the
+ * same way.
+ *
+ * Regenerating this file reintroduces both bugs — keep the guards if you ever
+ * rebuild it.
+ */
+
 export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
    ALTER TABLE "pages_blocks_posts_feed" DISABLE ROW LEVEL SECURITY;
@@ -36,55 +60,55 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   DROP TABLE "categories" CASCADE;
   DROP TABLE "homepage_blocks_posts_feed" CASCADE;
   DROP TABLE "_homepage_v_blocks_posts_feed" CASCADE;
-  ALTER TABLE "pages_rels" DROP CONSTRAINT "pages_rels_posts_fk";
+  ALTER TABLE "pages_rels" DROP CONSTRAINT IF EXISTS "pages_rels_posts_fk";
   
-  ALTER TABLE "_pages_v_rels" DROP CONSTRAINT "_pages_v_rels_posts_fk";
+  ALTER TABLE "_pages_v_rels" DROP CONSTRAINT IF EXISTS "_pages_v_rels_posts_fk";
   
-  ALTER TABLE "products_rels" DROP CONSTRAINT "products_rels_posts_fk";
+  ALTER TABLE "products_rels" DROP CONSTRAINT IF EXISTS "products_rels_posts_fk";
   
-  ALTER TABLE "_products_v_rels" DROP CONSTRAINT "_products_v_rels_posts_fk";
+  ALTER TABLE "_products_v_rels" DROP CONSTRAINT IF EXISTS "_products_v_rels_posts_fk";
   
-  ALTER TABLE "payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_posts_fk";
+  ALTER TABLE "payload_locked_documents_rels" DROP CONSTRAINT IF EXISTS "payload_locked_documents_rels_posts_fk";
   
-  ALTER TABLE "payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_authors_fk";
+  ALTER TABLE "payload_locked_documents_rels" DROP CONSTRAINT IF EXISTS "payload_locked_documents_rels_authors_fk";
   
-  ALTER TABLE "payload_locked_documents_rels" DROP CONSTRAINT "payload_locked_documents_rels_categories_fk";
+  ALTER TABLE "payload_locked_documents_rels" DROP CONSTRAINT IF EXISTS "payload_locked_documents_rels_categories_fk";
   
-  ALTER TABLE "homepage_rels" DROP CONSTRAINT "homepage_rels_posts_fk";
+  ALTER TABLE "homepage_rels" DROP CONSTRAINT IF EXISTS "homepage_rels_posts_fk";
   
-  ALTER TABLE "_homepage_v_rels" DROP CONSTRAINT "_homepage_v_rels_posts_fk";
+  ALTER TABLE "_homepage_v_rels" DROP CONSTRAINT IF EXISTS "_homepage_v_rels_posts_fk";
   
-  DROP INDEX "pages_rels_posts_id_idx";
-  DROP INDEX "_pages_v_rels_posts_id_idx";
-  DROP INDEX "products_rels_posts_id_idx";
-  DROP INDEX "_products_v_rels_posts_id_idx";
-  DROP INDEX "payload_locked_documents_rels_posts_id_idx";
-  DROP INDEX "payload_locked_documents_rels_authors_id_idx";
-  DROP INDEX "payload_locked_documents_rels_categories_id_idx";
-  DROP INDEX "homepage_rels_posts_id_idx";
-  DROP INDEX "_homepage_v_rels_posts_id_idx";
-  ALTER TABLE "media" ADD COLUMN "prefix" varchar DEFAULT 'media';
-  ALTER TABLE "pages_rels" DROP COLUMN "posts_id";
-  ALTER TABLE "_pages_v_rels" DROP COLUMN "posts_id";
-  ALTER TABLE "products_rels" DROP COLUMN "posts_id";
-  ALTER TABLE "_products_v_rels" DROP COLUMN "posts_id";
-  ALTER TABLE "payload_locked_documents_rels" DROP COLUMN "posts_id";
-  ALTER TABLE "payload_locked_documents_rels" DROP COLUMN "authors_id";
-  ALTER TABLE "payload_locked_documents_rels" DROP COLUMN "categories_id";
-  ALTER TABLE "homepage_rels" DROP COLUMN "posts_id";
-  ALTER TABLE "_homepage_v_rels" DROP COLUMN "posts_id";
-  DROP TYPE "public"."enum_pages_blocks_posts_feed_mode";
-  DROP TYPE "public"."enum__pages_v_blocks_posts_feed_mode";
-  DROP TYPE "public"."enum_products_blocks_posts_feed_mode";
-  DROP TYPE "public"."enum__products_v_blocks_posts_feed_mode";
-  DROP TYPE "public"."enum_posts_status";
-  DROP TYPE "public"."enum__posts_v_version_status";
-  DROP TYPE "public"."enum_authors_socials_label";
-  DROP TYPE "public"."enum_authors_status";
-  DROP TYPE "public"."enum__authors_v_version_socials_label";
-  DROP TYPE "public"."enum__authors_v_version_status";
-  DROP TYPE "public"."enum_homepage_blocks_posts_feed_mode";
-  DROP TYPE "public"."enum__homepage_v_blocks_posts_feed_mode";`)
+  DROP INDEX IF EXISTS "pages_rels_posts_id_idx";
+  DROP INDEX IF EXISTS "_pages_v_rels_posts_id_idx";
+  DROP INDEX IF EXISTS "products_rels_posts_id_idx";
+  DROP INDEX IF EXISTS "_products_v_rels_posts_id_idx";
+  DROP INDEX IF EXISTS "payload_locked_documents_rels_posts_id_idx";
+  DROP INDEX IF EXISTS "payload_locked_documents_rels_authors_id_idx";
+  DROP INDEX IF EXISTS "payload_locked_documents_rels_categories_id_idx";
+  DROP INDEX IF EXISTS "homepage_rels_posts_id_idx";
+  DROP INDEX IF EXISTS "_homepage_v_rels_posts_id_idx";
+  ALTER TABLE "media" ADD COLUMN IF NOT EXISTS "prefix" varchar DEFAULT 'media';
+  ALTER TABLE "pages_rels" DROP COLUMN IF EXISTS "posts_id";
+  ALTER TABLE "_pages_v_rels" DROP COLUMN IF EXISTS "posts_id";
+  ALTER TABLE "products_rels" DROP COLUMN IF EXISTS "posts_id";
+  ALTER TABLE "_products_v_rels" DROP COLUMN IF EXISTS "posts_id";
+  ALTER TABLE "payload_locked_documents_rels" DROP COLUMN IF EXISTS "posts_id";
+  ALTER TABLE "payload_locked_documents_rels" DROP COLUMN IF EXISTS "authors_id";
+  ALTER TABLE "payload_locked_documents_rels" DROP COLUMN IF EXISTS "categories_id";
+  ALTER TABLE "homepage_rels" DROP COLUMN IF EXISTS "posts_id";
+  ALTER TABLE "_homepage_v_rels" DROP COLUMN IF EXISTS "posts_id";
+  DROP TYPE IF EXISTS "public"."enum_pages_blocks_posts_feed_mode";
+  DROP TYPE IF EXISTS "public"."enum__pages_v_blocks_posts_feed_mode";
+  DROP TYPE IF EXISTS "public"."enum_products_blocks_posts_feed_mode";
+  DROP TYPE IF EXISTS "public"."enum__products_v_blocks_posts_feed_mode";
+  DROP TYPE IF EXISTS "public"."enum_posts_status";
+  DROP TYPE IF EXISTS "public"."enum__posts_v_version_status";
+  DROP TYPE IF EXISTS "public"."enum_authors_socials_label";
+  DROP TYPE IF EXISTS "public"."enum_authors_status";
+  DROP TYPE IF EXISTS "public"."enum__authors_v_version_socials_label";
+  DROP TYPE IF EXISTS "public"."enum__authors_v_version_status";
+  DROP TYPE IF EXISTS "public"."enum_homepage_blocks_posts_feed_mode";
+  DROP TYPE IF EXISTS "public"."enum__homepage_v_blocks_posts_feed_mode";`)
 }
 
 export async function down({ db, payload, req }: MigrateDownArgs): Promise<void> {
@@ -331,15 +355,15 @@ export async function down({ db, payload, req }: MigrateDownArgs): Promise<void>
   	"block_name" varchar
   );
   
-  ALTER TABLE "pages_rels" ADD COLUMN "posts_id" integer;
-  ALTER TABLE "_pages_v_rels" ADD COLUMN "posts_id" integer;
-  ALTER TABLE "products_rels" ADD COLUMN "posts_id" integer;
-  ALTER TABLE "_products_v_rels" ADD COLUMN "posts_id" integer;
-  ALTER TABLE "payload_locked_documents_rels" ADD COLUMN "posts_id" integer;
-  ALTER TABLE "payload_locked_documents_rels" ADD COLUMN "authors_id" integer;
-  ALTER TABLE "payload_locked_documents_rels" ADD COLUMN "categories_id" integer;
-  ALTER TABLE "homepage_rels" ADD COLUMN "posts_id" integer;
-  ALTER TABLE "_homepage_v_rels" ADD COLUMN "posts_id" integer;
+  ALTER TABLE "pages_rels" ADD COLUMN IF NOT EXISTS "posts_id" integer;
+  ALTER TABLE "_pages_v_rels" ADD COLUMN IF NOT EXISTS "posts_id" integer;
+  ALTER TABLE "products_rels" ADD COLUMN IF NOT EXISTS "posts_id" integer;
+  ALTER TABLE "_products_v_rels" ADD COLUMN IF NOT EXISTS "posts_id" integer;
+  ALTER TABLE "payload_locked_documents_rels" ADD COLUMN IF NOT EXISTS "posts_id" integer;
+  ALTER TABLE "payload_locked_documents_rels" ADD COLUMN IF NOT EXISTS "authors_id" integer;
+  ALTER TABLE "payload_locked_documents_rels" ADD COLUMN IF NOT EXISTS "categories_id" integer;
+  ALTER TABLE "homepage_rels" ADD COLUMN IF NOT EXISTS "posts_id" integer;
+  ALTER TABLE "_homepage_v_rels" ADD COLUMN IF NOT EXISTS "posts_id" integer;
   ALTER TABLE "pages_blocks_posts_feed" ADD CONSTRAINT "pages_blocks_posts_feed_category_id_categories_id_fk" FOREIGN KEY ("category_id") REFERENCES "public"."categories"("id") ON DELETE set null ON UPDATE no action;
   ALTER TABLE "pages_blocks_posts_feed" ADD CONSTRAINT "pages_blocks_posts_feed_parent_id_fk" FOREIGN KEY ("_parent_id") REFERENCES "public"."pages"("id") ON DELETE cascade ON UPDATE no action;
   ALTER TABLE "_pages_v_blocks_posts_feed" ADD CONSTRAINT "_pages_v_blocks_posts_feed_category_id_categories_id_fk" FOREIGN KEY ("category_id") REFERENCES "public"."categories"("id") ON DELETE set null ON UPDATE no action;
@@ -475,5 +499,5 @@ export async function down({ db, payload, req }: MigrateDownArgs): Promise<void>
   CREATE INDEX "payload_locked_documents_rels_categories_id_idx" ON "payload_locked_documents_rels" USING btree ("categories_id");
   CREATE INDEX "homepage_rels_posts_id_idx" ON "homepage_rels" USING btree ("posts_id");
   CREATE INDEX "_homepage_v_rels_posts_id_idx" ON "_homepage_v_rels" USING btree ("posts_id");
-  ALTER TABLE "media" DROP COLUMN "prefix";`)
+  ALTER TABLE "media" DROP COLUMN IF EXISTS "prefix";`)
 }
