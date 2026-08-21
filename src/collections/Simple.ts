@@ -8,7 +8,7 @@ import { revalidate } from '../hooks/revalidate'
 /**
  * The straightforward collections, grouped in one file because each is a
  * handful of fields and a page of boilerplate per record would bury them.
- * Anything with real behaviour (Posts, Industries, Media, Leads) gets its own.
+ * Anything with real behaviour (Industries, Media, Leads) gets its own.
  */
 
 const socialsField = {
@@ -23,46 +23,6 @@ const socialsField = {
       options: ['LinkedIn', 'X', 'Instagram', 'Facebook', 'YouTube', 'WhatsApp', 'GitHub'],
     },
     { name: 'href', type: 'text' as const, required: true },
-  ],
-}
-
-export const Authors: CollectionConfig = {
-  slug: 'authors',
-  admin: { group: 'Blog', useAsTitle: 'name', defaultColumns: ['name', 'role'] },
-  versions: versioned,
-  access: { read: publishedOnly, create: canEditContent, update: canEditContent, delete: isAdmin },
-  hooks: { beforeChange: [enforcePublishPermission], afterChange: [revalidate(['authors'])], afterDelete: [revalidate(['authors'])] },
-  fields: [
-    slugField('name'),
-    { name: 'name', type: 'text', required: true },
-    { name: 'role', type: 'text' },
-    { name: 'bio', type: 'textarea' },
-    { name: 'photo', type: 'upload', relationTo: 'media' },
-    {
-      name: 'teamMember',
-      type: 'relationship',
-      relationTo: 'team',
-      admin: { description: 'Optional link to the team record, so a bio is written once.' },
-    },
-    socialsField,
-  ],
-}
-
-export const Categories: CollectionConfig = {
-  slug: 'categories',
-  admin: { group: 'Blog', useAsTitle: 'name', defaultColumns: ['name', 'slug'] },
-  access: { read: () => true, create: canEditContent, update: canEditContent, delete: isAdmin },
-  hooks: { afterChange: [revalidate(['categories'])], afterDelete: [revalidate(['categories'])] },
-  fields: [
-    slugField('name'),
-    { name: 'name', type: 'text', required: true },
-    { name: 'description', type: 'textarea' },
-    {
-      name: 'color',
-      type: 'text',
-      admin: { description: 'Hex accent for the category chip. Blank uses the brand cyan.' },
-    },
-    seoField,
   ],
 }
 
@@ -138,7 +98,7 @@ export const Insights: CollectionConfig = {
     group: 'Content',
     useAsTitle: 'title',
     defaultColumns: ['title', 'category', 'date', 'order', '_status'],
-    description: 'The video/media carousel. For written articles use Blog -> Posts instead.',
+    description: 'The media carousel shown under Latest insights.',
   },
   versions: versioned,
   access: { read: publishedOnly, create: canEditContent, update: canEditContent, delete: isAdmin },
@@ -152,16 +112,23 @@ export const Insights: CollectionConfig = {
       relationTo: 'media',
       admin: {
         description:
-          '16:10 or wider. The card frame is 16:10 and trims the sides. Without one the card shows a neutral plate of the same shape.',
+          '16:10 or wider — this is the card. The frame is 16:10 and trims the sides, and it renders up to ~1240px on a 2x display, so upload something at least that wide. Without one the card shows a neutral plate of the same shape.',
       },
     },
     { name: 'youtubeUrl', type: 'text' },
     {
       name: 'category',
       type: 'text',
-      admin: { description: 'Not currently rendered — the card shows cover plus title. Kept for a future layout.' },
+      admin: { description: 'Not currently rendered — the card shows cover, title and description. Kept for a future layout.' },
     },
-    { name: 'description', type: 'textarea', admin: { description: 'Not currently rendered. See above.' } },
+    {
+      name: 'description',
+      type: 'textarea',
+      admin: {
+        description:
+          'Optional. Shown under the title on the card, clamped to two lines — roughly 120 characters before it truncates. Leave empty for a cover-and-title card.',
+      },
+    },
     {
       type: 'row',
       fields: [

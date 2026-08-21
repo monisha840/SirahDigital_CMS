@@ -12,14 +12,13 @@ import { Services } from './collections/Services'
 import { Industries } from './collections/Industries'
 import { Products } from './collections/Products'
 import { CaseStudies } from './collections/CaseStudies'
-import { Posts } from './collections/Posts'
 import { Testimonials } from './collections/Testimonials'
 import { Pages } from './collections/Pages'
 import { Leads } from './collections/Leads'
 import { Bookings } from './collections/Bookings'
 import { Slots } from './collections/Slots'
 import { syncBookingsTask } from './jobs/syncBookings'
-import { Authors, Categories, Clients, Team, Insights, CarouselCards, Redirects } from './collections/Simple'
+import { Clients, Team, Insights, CarouselCards, Redirects } from './collections/Simple'
 import { ALL_GLOBALS } from './globals'
 import { siteBundle, health, purgeLeads, leadIntake, syncBookings } from './endpoints'
 import { slotEndpoints } from './endpoints/slots'
@@ -189,10 +188,6 @@ export default buildConfig({
     Team,
     Insights,
     CarouselCards,
-    // Blog
-    Posts,
-    Authors,
-    Categories,
     // Library + admin
     Media,
     Redirects,

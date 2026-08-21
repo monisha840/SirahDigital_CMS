@@ -77,9 +77,6 @@ export interface Config {
     team: Team;
     insights: Insight;
     'carousel-cards': CarouselCard;
-    posts: Post;
-    authors: Author;
-    categories: Category;
     media: Media;
     redirects: Redirect;
     leads: Lead;
@@ -104,9 +101,6 @@ export interface Config {
     team: TeamSelect<false> | TeamSelect<true>;
     insights: InsightsSelect<false> | InsightsSelect<true>;
     'carousel-cards': CarouselCardsSelect<false> | CarouselCardsSelect<true>;
-    posts: PostsSelect<false> | PostsSelect<true>;
-    authors: AuthorsSelect<false> | AuthorsSelect<true>;
-    categories: CategoriesSelect<false> | CategoriesSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     redirects: RedirectsSelect<false> | RedirectsSelect<true>;
     leads: LeadsSelect<false> | LeadsSelect<true>;
@@ -344,21 +338,6 @@ export interface Page {
              * Optional #id so this section can be deep-linked.
              */
             anchor?: string | null;
-            heading?: string | null;
-            intro?: string | null;
-            mode?: ('latest' | 'featured' | 'manual') | null;
-            limit?: number | null;
-            category?: (number | null) | Category;
-            posts?: (number | Post)[] | null;
-            id?: string | null;
-            blockName?: string | null;
-            blockType: 'postsFeed';
-          }
-        | {
-            /**
-             * Optional #id so this section can be deep-linked.
-             */
-            anchor?: string | null;
             /**
              * Scene copy is edited once under Globals -> Transformation Story. This block only places it.
              */
@@ -590,6 +569,7 @@ export interface Media {
    * Set by the migration for assets imported from the old /public folder.
    */
   sourcePath?: string | null;
+  prefix?: string | null;
   updatedAt: string;
   createdAt: string;
   url?: string | null;
@@ -828,21 +808,6 @@ export interface Product {
             id?: string | null;
             blockName?: string | null;
             blockType: 'insightsCarousel';
-          }
-        | {
-            /**
-             * Optional #id so this section can be deep-linked.
-             */
-            anchor?: string | null;
-            heading?: string | null;
-            intro?: string | null;
-            mode?: ('latest' | 'featured' | 'manual') | null;
-            limit?: number | null;
-            category?: (number | null) | Category;
-            posts?: (number | Post)[] | null;
-            id?: string | null;
-            blockName?: string | null;
-            blockType: 'postsFeed';
           }
         | {
             /**
@@ -1342,7 +1307,7 @@ export interface Testimonial {
   _status?: ('draft' | 'published') | null;
 }
 /**
- * The video/media carousel. For written articles use Blog -> Posts instead.
+ * The media carousel shown under Latest insights.
  *
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "insights".
@@ -1384,189 +1349,6 @@ export interface Insight {
   _status?: ('draft' | 'published') | null;
 }
 /**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "categories".
- */
-export interface Category {
-  id: number;
-  /**
-   * The URL segment. Generated from the title on first save. Changing it breaks existing links — add a redirect if you do.
-   */
-  slug: string;
-  name: string;
-  description?: string | null;
-  /**
-   * Hex accent for the category chip. Blank uses the brand cyan.
-   */
-  color?: string | null;
-  /**
-   * Optional. Blank fields fall back to the page title, the excerpt, and then site-wide defaults.
-   */
-  seo?: {
-    /**
-     * Browser tab and search result heading. ~60 characters reads best.
-     */
-    title?: string | null;
-    /**
-     * Only if this content is duplicated elsewhere. Usually leave blank.
-     */
-    canonical?: string | null;
-    /**
-     * The grey line under the search result. ~155 characters before Google trims it.
-     */
-    description?: string | null;
-    /**
-     * The preview shown when the link is shared. 1200x630. Falls back to the site default.
-     */
-    ogImage?: (number | null) | Media;
-    /**
-     * Hide from Google and drop from the sitemap. The page stays publicly reachable.
-     */
-    noIndex?: boolean | null;
-  };
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "posts".
- */
-export interface Post {
-  id: number;
-  /**
-   * The URL segment. Generated from the title on first save. Changing it breaks existing links — add a redirect if you do.
-   */
-  slug: string;
-  /**
-   * The date shown on the post. To schedule the post going live, use Publish -> Schedule instead.
-   */
-  publishedAt?: string | null;
-  featured?: boolean | null;
-  /**
-   * Minutes. Calculated on save.
-   */
-  readingTime?: number | null;
-  title: string;
-  /**
-   * The card summary and the SEO description fallback.
-   */
-  excerpt?: string | null;
-  cover?: (number | null) | Media;
-  body: {
-    root: {
-      type: string;
-      children: {
-        type: any;
-        version: number;
-        [k: string]: unknown;
-      }[];
-      direction: ('ltr' | 'rtl') | null;
-      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
-      indent: number;
-      version: number;
-    };
-    [k: string]: unknown;
-  };
-  author?: (number | null) | Author;
-  category?: (number | null) | Category;
-  tags?:
-    | {
-        tag: string;
-        id?: string | null;
-      }[]
-    | null;
-  relatedPosts?: (number | Post)[] | null;
-  /**
-   * Optional. Blank fields fall back to the page title, the excerpt, and then site-wide defaults.
-   */
-  seo?: {
-    /**
-     * Browser tab and search result heading. ~60 characters reads best.
-     */
-    title?: string | null;
-    /**
-     * Only if this content is duplicated elsewhere. Usually leave blank.
-     */
-    canonical?: string | null;
-    /**
-     * The grey line under the search result. ~155 characters before Google trims it.
-     */
-    description?: string | null;
-    /**
-     * The preview shown when the link is shared. 1200x630. Falls back to the site default.
-     */
-    ogImage?: (number | null) | Media;
-    /**
-     * Hide from Google and drop from the sitemap. The page stays publicly reachable.
-     */
-    noIndex?: boolean | null;
-  };
-  updatedAt: string;
-  createdAt: string;
-  _status?: ('draft' | 'published') | null;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "authors".
- */
-export interface Author {
-  id: number;
-  /**
-   * The URL segment. Generated from the title on first save. Changing it breaks existing links — add a redirect if you do.
-   */
-  slug: string;
-  name: string;
-  role?: string | null;
-  bio?: string | null;
-  photo?: (number | null) | Media;
-  /**
-   * Optional link to the team record, so a bio is written once.
-   */
-  teamMember?: (number | null) | Team;
-  socials?:
-    | {
-        label: 'LinkedIn' | 'X' | 'Instagram' | 'Facebook' | 'YouTube' | 'WhatsApp' | 'GitHub';
-        href: string;
-        id?: string | null;
-      }[]
-    | null;
-  updatedAt: string;
-  createdAt: string;
-  _status?: ('draft' | 'published') | null;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "team".
- */
-export interface Team {
-  id: number;
-  /**
-   * Lower numbers appear first. Ties fall back to creation date.
-   */
-  order?: number | null;
-  name: string;
-  role: string;
-  bio?: string | null;
-  /**
-   * A missing photo falls back to an initials badge rather than a broken image.
-   */
-  photo?: (number | null) | Media;
-  /**
-   * Renders in the founder panel rather than the team grid.
-   */
-  isFounder?: boolean | null;
-  socials?:
-    | {
-        label: 'LinkedIn' | 'X' | 'Instagram' | 'Facebook' | 'YouTube' | 'WhatsApp' | 'GitHub';
-        href: string;
-        id?: string | null;
-      }[]
-    | null;
-  updatedAt: string;
-  createdAt: string;
-  _status?: ('draft' | 'published') | null;
-}
-/**
  * The homepage 3D carousel. Portrait 5:7 — the focal point handles the crop, so a source that is not exactly 5:7 no longer has to be cut by hand.
  *
  * This interface was referenced by `Config`'s JSON-Schema
@@ -1599,6 +1381,38 @@ export interface CarouselCard {
    * Defaults to "Explore".
    */
   ctaLabel?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "team".
+ */
+export interface Team {
+  id: number;
+  /**
+   * Lower numbers appear first. Ties fall back to creation date.
+   */
+  order?: number | null;
+  name: string;
+  role: string;
+  bio?: string | null;
+  /**
+   * A missing photo falls back to an initials badge rather than a broken image.
+   */
+  photo?: (number | null) | Media;
+  /**
+   * Renders in the founder panel rather than the team grid.
+   */
+  isFounder?: boolean | null;
+  socials?:
+    | {
+        label: 'LinkedIn' | 'X' | 'Instagram' | 'Facebook' | 'YouTube' | 'WhatsApp' | 'GitHub';
+        href: string;
+        id?: string | null;
+      }[]
+    | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -2079,18 +1893,6 @@ export interface PayloadLockedDocument {
         value: number | CarouselCard;
       } | null)
     | ({
-        relationTo: 'posts';
-        value: number | Post;
-      } | null)
-    | ({
-        relationTo: 'authors';
-        value: number | Author;
-      } | null)
-    | ({
-        relationTo: 'categories';
-        value: number | Category;
-      } | null)
-    | ({
         relationTo: 'media';
         value: number | Media;
       } | null)
@@ -2250,19 +2052,6 @@ export interface PagesSelect<T extends boolean = true> {
               intro?: T;
               insights?: T;
               exploreMoreHref?: T;
-              id?: T;
-              blockName?: T;
-            };
-        postsFeed?:
-          | T
-          | {
-              anchor?: T;
-              heading?: T;
-              intro?: T;
-              mode?: T;
-              limit?: T;
-              category?: T;
-              posts?: T;
               id?: T;
               blockName?: T;
             };
@@ -2603,19 +2392,6 @@ export interface ProductsSelect<T extends boolean = true> {
               id?: T;
               blockName?: T;
             };
-        postsFeed?:
-          | T
-          | {
-              anchor?: T;
-              heading?: T;
-              intro?: T;
-              mode?: T;
-              limit?: T;
-              category?: T;
-              posts?: T;
-              id?: T;
-              blockName?: T;
-            };
         transformationStory?:
           | T
           | {
@@ -2895,84 +2671,6 @@ export interface CarouselCardsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "posts_select".
- */
-export interface PostsSelect<T extends boolean = true> {
-  slug?: T;
-  publishedAt?: T;
-  featured?: T;
-  readingTime?: T;
-  title?: T;
-  excerpt?: T;
-  cover?: T;
-  body?: T;
-  author?: T;
-  category?: T;
-  tags?:
-    | T
-    | {
-        tag?: T;
-        id?: T;
-      };
-  relatedPosts?: T;
-  seo?:
-    | T
-    | {
-        title?: T;
-        canonical?: T;
-        description?: T;
-        ogImage?: T;
-        noIndex?: T;
-      };
-  updatedAt?: T;
-  createdAt?: T;
-  _status?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "authors_select".
- */
-export interface AuthorsSelect<T extends boolean = true> {
-  slug?: T;
-  name?: T;
-  role?: T;
-  bio?: T;
-  photo?: T;
-  teamMember?: T;
-  socials?:
-    | T
-    | {
-        label?: T;
-        href?: T;
-        id?: T;
-      };
-  updatedAt?: T;
-  createdAt?: T;
-  _status?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "categories_select".
- */
-export interface CategoriesSelect<T extends boolean = true> {
-  slug?: T;
-  name?: T;
-  description?: T;
-  color?: T;
-  seo?:
-    | T
-    | {
-        title?: T;
-        canonical?: T;
-        description?: T;
-        ogImage?: T;
-        noIndex?: T;
-      };
-  updatedAt?: T;
-  createdAt?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "media_select".
  */
 export interface MediaSelect<T extends boolean = true> {
@@ -2981,6 +2679,7 @@ export interface MediaSelect<T extends boolean = true> {
   blurDataURL?: T;
   credit?: T;
   sourcePath?: T;
+  prefix?: T;
   updatedAt?: T;
   createdAt?: T;
   url?: T;
@@ -3573,21 +3272,6 @@ export interface Homepage {
              * Optional #id so this section can be deep-linked.
              */
             anchor?: string | null;
-            heading?: string | null;
-            intro?: string | null;
-            mode?: ('latest' | 'featured' | 'manual') | null;
-            limit?: number | null;
-            category?: (number | null) | Category;
-            posts?: (number | Post)[] | null;
-            id?: string | null;
-            blockName?: string | null;
-            blockType: 'postsFeed';
-          }
-        | {
-            /**
-             * Optional #id so this section can be deep-linked.
-             */
-            anchor?: string | null;
             /**
              * Scene copy is edited once under Globals -> Transformation Story. This block only places it.
              */
@@ -4157,19 +3841,6 @@ export interface HomepageSelect<T extends boolean = true> {
               id?: T;
               blockName?: T;
             };
-        postsFeed?:
-          | T
-          | {
-              anchor?: T;
-              heading?: T;
-              intro?: T;
-              mode?: T;
-              limit?: T;
-              category?: T;
-              posts?: T;
-              id?: T;
-              blockName?: T;
-            };
         transformationStory?:
           | T
           | {
@@ -4483,14 +4154,6 @@ export interface TaskSchedulePublish {
       | ({
           relationTo: 'carousel-cards';
           value: number | CarouselCard;
-        } | null)
-      | ({
-          relationTo: 'posts';
-          value: number | Post;
-        } | null)
-      | ({
-          relationTo: 'authors';
-          value: number | Author;
         } | null);
     global?:
       | (

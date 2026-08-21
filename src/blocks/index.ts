@@ -185,44 +185,6 @@ export const InsightsCarouselBlock: Block = {
   ],
 }
 
-export const PostsFeedBlock: Block = {
-  slug: 'postsFeed',
-  labels: { singular: 'Blog Feed', plural: 'Blog Feeds' },
-  fields: [
-    anchorField,
-    ...sectionHeader,
-    {
-      name: 'mode',
-      type: 'select',
-      defaultValue: 'latest',
-      options: [
-        { label: 'Latest posts', value: 'latest' },
-        { label: 'Featured posts', value: 'featured' },
-        { label: 'Hand-picked', value: 'manual' },
-      ],
-    },
-    {
-      name: 'limit',
-      type: 'number',
-      defaultValue: 3,
-      admin: { condition: (_, s) => s?.mode !== 'manual' },
-    },
-    {
-      name: 'category',
-      type: 'relationship',
-      relationTo: 'categories',
-      admin: { condition: (_, s) => s?.mode === 'latest' },
-    },
-    {
-      name: 'posts',
-      type: 'relationship',
-      relationTo: 'posts',
-      hasMany: true,
-      admin: { condition: (_, s) => s?.mode === 'manual' },
-    },
-  ],
-}
-
 export const TransformationStoryBlock: Block = {
   slug: 'transformationStory',
   labels: { singular: 'Transformation Story', plural: 'Transformation Stories' },
@@ -403,7 +365,6 @@ export const ALL_BLOCKS: Block[] = [
   ClientMarqueeBlock,
   TestimonialWallBlock,
   InsightsCarouselBlock,
-  PostsFeedBlock,
   TransformationStoryBlock,
   RoiCalculatorBlock,
   PerspectiveCarouselBlock,
