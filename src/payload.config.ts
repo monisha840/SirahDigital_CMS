@@ -43,6 +43,40 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || `${SITE_URL},${CMS_URL}`
 // Payload sets this while running migrate / generate:types.
 const isMigrating = Boolean(process.env.PAYLOAD_MIGRATING)
 
+/*
+ * Say out loud which database this process is about to write to.
+ *
+ * The failure this prevents is quiet: a local `next dev` looks identical
+ * whether DATABASE_URI names a scratch project or the one serving
+ * sirahdigital.in, and you find out which only when a colleague asks why a
+ * test lead is in the live inbox. Printing the host costs one line at boot and
+ * makes the wrong .env visible in the terminal you are already watching.
+ *
+ * Only the host and project ref — the connection string carries the password.
+ */
+if (process.env.NODE_ENV !== 'production' && !isMigrating) {
+  const uri = process.env.DATABASE_URI || ''
+  let where = uri ? 'unparseable DATABASE_URI' : 'DATABASE_URI is not set'
+  try {
+    const { hostname, port, username } = new URL(uri)
+    // Supabase usernames are postgres.<project-ref>; the ref identifies the
+    // project, where the pooler hostname is shared across a whole region.
+    const ref = username.includes('.') ? username.split('.').slice(1).join('.') : null
+    where = `${hostname}:${port}${ref ? ` (project ${ref})` : ''}`
+  } catch {
+    /* leave the fallback */
+  }
+  const pushing = process.env.PAYLOAD_SCHEMA_PUSH === 'true'
+  console.log(`[payload] database: ${where}`)
+  if (pushing) {
+    console.warn(
+      `[payload] PAYLOAD_SCHEMA_PUSH=true - this boot will alter that schema in place,
+          with no migration file and no way to review the change first.
+          Only correct against a database you are willing to lose.`,
+    )
+  }
+}
+
 /**
  * Media storage.
  *
@@ -250,9 +284,22 @@ export default buildConfig({
       max: 5,
       idleTimeoutMillis: 10_000,
     },
-    // Migrations are generated and reviewed in a PR, then applied on deploy.
-    // Never let a production boot silently alter the schema.
-    push: process.env.NODE_ENV !== 'production',
+    /*
+     * Schema push is opt-in, and off by default everywhere.
+     *
+     * It used to be `NODE_ENV !== 'production'`, which reads as "safe in dev"
+     * and is not: DATABASE_URI in a local .env has always pointed at the
+     * production database, so every `next dev` was a live DDL channel into it.
+     * That is not theoretical — two deploys failed in one afternoon because a
+     * dev-mode push had already created media.prefix and had left a 'dev'
+     * marker in payload_migrations, and `payload migrate` then found the
+     * database in a state its own migrations did not describe.
+     *
+     * Requiring an explicit variable makes the dangerous thing a decision
+     * rather than a default. Set PAYLOAD_SCHEMA_PUSH=true in .env only when
+     * DATABASE_URI points at a database you are willing to lose.
+     */
+    push: process.env.PAYLOAD_SCHEMA_PUSH === 'true' && process.env.NODE_ENV !== 'production',
   }),
 
   sharp,
