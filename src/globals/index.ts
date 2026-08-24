@@ -55,7 +55,7 @@ export const SiteSettings: GlobalConfig = {
               type: 'text',
               admin: {
                 description:
-                  'TidyCal booking type as "<username>/<slug>", e.g. sirahdigital/45-min-strategy-call. Availability (Mon-Sat 10:00-20:00 IST, Sunday closed) is set in the TidyCal dashboard, not here.',
+                  'Legacy TidyCal booking type. Nothing reads this field any more — /book is served by the Availability screen and the slots collection. Kept only so an existing value is not silently dropped; availability is Mon-Sat 10:30-19:30 IST, Sunday closed, and it is set there, not here or in TidyCal.',
               },
             },
             {

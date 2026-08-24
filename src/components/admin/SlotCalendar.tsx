@@ -252,11 +252,23 @@ function Generator({
   const [open, setOpen] = useState(false);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5]); // Mon–Fri
-  const [dayStart, setDayStart] = useState("10:00");
-  const [dayEnd, setDayEnd] = useState("18:00");
-  const [duration, setDuration] = useState(30);
-  const [buffer, setBuffer] = useState(10);
+  /*
+   * Seeded with the consultation as it is actually sold, not with round
+   * numbers. Mon-Sat 10:30-19:30 IST, 45 minutes with a 15-minute buffer, which
+   * steps hourly and puts nine slots a day from 10:30 to 18:30 — the last one
+   * ending at 19:15, inside the window.
+   *
+   * These defaults are load-bearing rather than cosmetic: the site quotes the
+   * same hours in CONSULT (SirahDigital_3D_WebSite/src/lib/chat/faq.js) and the
+   * bot reads them out. Generating a range with the old 10:00-18:00 Mon-Fri
+   * defaults would leave the calendar disagreeing with what the bot promises,
+   * and the visitor finds out at the point of booking. Change both together.
+   */
+  const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5, 6]); // Mon–Sat
+  const [dayStart, setDayStart] = useState("10:30");
+  const [dayEnd, setDayEnd] = useState("19:30");
+  const [duration, setDuration] = useState(45);
+  const [buffer, setBuffer] = useState(15);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
