@@ -235,14 +235,22 @@ export async function createBookingEvent({
  * indistinguishable from one that scrolled out of the window — and the poller
  * would then have no way to tell "called off" from "not in range".
  *
- * `sendUpdates=all` here, unlike everywhere else in this file. The reason the
- * link is withheld at booking time does not apply to a cancellation: there is no
- * link to leak, and someone who has set aside an hour is owed the news by every
- * channel available, not only the one that depends on us having a phone number.
+ * `sendUpdates=none`, like everywhere else in this file.
+ *
+ * This used to be `all`, on the reasoning that someone who has set aside an hour
+ * is owed the news by every channel available. That is a fair argument and it
+ * was overruled deliberately: the client is not to receive email from us at any
+ * point, and a Google cancellation notice is email from us. WhatsApp carries the
+ * news instead — the same channel that confirmed the booking and would have
+ * delivered the link.
+ *
+ * The cost is named rather than hidden: if we hold no working phone number, a
+ * cancelled call now reaches the invitee through no channel at all. Whoever
+ * cancels is the one who has to tell them.
  */
 export async function cancelBookingEvent(eventId: string): Promise<void> {
   await call(
-    `/calendars/${encodeURIComponent(CALENDAR_ID)}/events/${encodeURIComponent(eventId)}?sendUpdates=all`,
+    `/calendars/${encodeURIComponent(CALENDAR_ID)}/events/${encodeURIComponent(eventId)}?sendUpdates=none`,
     {
       method: 'PATCH',
       body: JSON.stringify({ status: 'cancelled' }),

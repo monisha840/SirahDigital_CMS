@@ -30,6 +30,35 @@ import { googleAccessToken, googleReady } from './googleAuth'
 const RESEND_KEY = process.env.RESEND_API_KEY
 const FROM = process.env.EMAIL_FROM
 
+/**
+ * Who this system is allowed to email. Anyone else is a bug, not a config.
+ *
+ * The rule is absolute: booking mail goes to the team, never to the person who
+ * booked. They hear from us on WhatsApp. Nothing here composes a message to a
+ * visitor, so today the rule holds by construction — but `teamEmailTo` is an
+ * editable text field in the admin, so one mistyped address in the CMS is all it
+ * takes to start mailing a customer from the company's own mailbox, with the
+ * customer's enquiry quoted in the body. That failure would be silent, and it
+ * would look deliberate to whoever received it.
+ *
+ * So the recipient is checked here, at the one place every email passes through,
+ * rather than trusted at each call site. Default is any address on our own
+ * domain; EMAIL_ALLOWED_RECIPIENTS overrides it with a comma-separated list of
+ * whole addresses and/or @domain suffixes (a shared Gmail team inbox needs its
+ * full address adding).
+ */
+const RECIPIENT_ALLOWLIST = (process.env.EMAIL_ALLOWED_RECIPIENTS || '@sirahdigital.in')
+  .split(',')
+  .map((rule) => rule.trim().toLowerCase())
+  .filter(Boolean)
+
+const isAllowedRecipient = (to: string) => {
+  const address = to.trim().toLowerCase()
+  return RECIPIENT_ALLOWLIST.some((rule) =>
+    rule.startsWith('@') ? address.endsWith(rule) : address === rule,
+  )
+}
+
 /** Either path works. Gmail needs no EMAIL_FROM — it sends as the authorised account. */
 export const emailReady = Boolean(googleReady || (RESEND_KEY && FROM))
 
@@ -136,6 +165,23 @@ async function sendViaResend({
 
 export async function sendEmail(args: { to: string; subject: string; text: string; replyTo?: string }) {
   if (!args.to) throw new Error('No email recipient.')
+
+  /*
+   * Refuse rather than warn. A blocked send surfaces as an error on the booking
+   * row, where someone will see it and fix the address; a warning would scroll
+   * past in a function log while the mail went out anyway.
+   *
+   * The visitor's address still legitimately appears as Reply-To below, so the
+   * team can answer them from the inbox. That is a header, not a recipient —
+   * nothing is delivered to it.
+   */
+  if (!isAllowedRecipient(args.to)) {
+    throw new Error(
+      `Refusing to email ${args.to}: this system only mails the team, never the person who booked. ` +
+        `Allowed: ${RECIPIENT_ALLOWLIST.join(', ')}. ` +
+        `If that address really should receive booking mail, add it to EMAIL_ALLOWED_RECIPIENTS.`,
+    )
+  }
 
   const transport = emailTransport()
   if (transport === 'resend') return sendViaResend(args)
