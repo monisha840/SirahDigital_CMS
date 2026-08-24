@@ -1,13 +1,14 @@
 import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
 
 /*
- * Rescheduling: three columns on `bookings` and an index on the token.
+ * Rescheduling: three columns on `bookings` with an index on the token, and
+ * the reschedule email templates on the message-templates global.
  *
  * ── Hand-written, not generated ──────────────────────────────────────────
  * `payload migrate:create` diffs the config against a live database, and the
  * only DATABASE_URI on this machine points at production. Generating this file
  * would mean opening production to write a migration whose whole purpose is to
- * be applied to production later, by the deploy. Three ADD COLUMNs are small
+ * be applied to production later, by the deploy. Seven ADD COLUMNs are small
  * enough to write by hand and check by eye, so that is what this is.
  *
  * ── IF NOT EXISTS, for the reason the previous migration documents ───────
@@ -53,11 +54,30 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
      */
     CREATE INDEX IF NOT EXISTS "bookings_reschedule_token_idx"
         ON "bookings" USING btree ("reschedule_token");
+
+    /*
+     * The reschedule email templates, on the global and on its version table.
+     *
+     * Both, because message-templates has drafts enabled: the published row
+     * lives in "message_templates" and every saved revision in
+     * "_message_templates_v". Adding the column to only one of them lets the
+     * admin save a value that the next publish silently discards — and the
+     * missing column does not fail loudly, it fails as a 42703 the first time
+     * anything reads the global, which is the reminder job at 3am.
+     */
+    ALTER TABLE "message_templates" ADD COLUMN IF NOT EXISTS "team_reschedule_subject" varchar;
+    ALTER TABLE "message_templates" ADD COLUMN IF NOT EXISTS "team_reschedule_body" varchar;
+    ALTER TABLE "_message_templates_v" ADD COLUMN IF NOT EXISTS "version_team_reschedule_subject" varchar;
+    ALTER TABLE "_message_templates_v" ADD COLUMN IF NOT EXISTS "version_team_reschedule_body" varchar;
   `)
 }
 
 export async function down({ db }: MigrateDownArgs): Promise<void> {
   await db.execute(sql`
+    ALTER TABLE "_message_templates_v" DROP COLUMN IF EXISTS "version_team_reschedule_body";
+    ALTER TABLE "_message_templates_v" DROP COLUMN IF EXISTS "version_team_reschedule_subject";
+    ALTER TABLE "message_templates" DROP COLUMN IF EXISTS "team_reschedule_body";
+    ALTER TABLE "message_templates" DROP COLUMN IF EXISTS "team_reschedule_subject";
     DROP INDEX IF EXISTS "bookings_reschedule_token_idx";
     ALTER TABLE "bookings" DROP COLUMN IF EXISTS "reschedule_token";
     ALTER TABLE "bookings" DROP COLUMN IF EXISTS "reschedule_count";
