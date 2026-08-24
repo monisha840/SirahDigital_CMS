@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import type { CollectionConfig } from 'payload'
 import { canPublish, isAdmin, noone } from '../access'
 
@@ -68,6 +69,24 @@ export const Bookings: CollectionConfig = {
           const purge = new Date(data.startAt || Date.now())
           purge.setMonth(purge.getMonth() + BOOKING_RETENTION_MONTHS)
           data.purgeAt = purge.toISOString()
+
+          /*
+           * The reschedule token, minted here rather than in the booking
+           * endpoint.
+           *
+           * A row without one cannot be moved by the person it belongs to, and
+           * the day-before message would go out with the reschedule line held
+           * back — a silent downgrade nobody would notice for weeks. Doing it in
+           * the hook covers every way a booking can come into being, including a
+           * hand-created row in the admin and whatever the next integration is.
+           *
+           * randomBytes, not randomInt or a counter: this is the entire
+           * authorisation for moving somebody's call, so it has to be
+           * unguessable. 24 bytes is 192 bits, base64url so it survives being
+           * pasted into a WhatsApp message and clicked.
+           */
+          data.rescheduleToken = data.rescheduleToken || crypto.randomBytes(24).toString('base64url')
+          data.rescheduleCount = data.rescheduleCount ?? 0
         }
         return data
       },
@@ -180,7 +199,7 @@ export const Bookings: CollectionConfig = {
       type: 'group',
       admin: {
         description:
-          'Set when each message is sent. Empty means "not yet"; a value means "done, never again".',
+          'Set when each message is sent. Empty means "not yet"; a value means "done". Not "never again": a reschedule clears these on purpose, so the three messages go out afresh for the new time. Read them as "sent for the time currently on this row".',
       },
       fields: [
         {
@@ -220,6 +239,48 @@ export const Bookings: CollectionConfig = {
             readOnly: true,
             description:
               'Why the most recent send failed. Kept on the row because a job log scrolls away and this is the first thing anyone asks about a missing reminder.',
+          },
+        },
+      ],
+    },
+
+    /*
+     * ── Rescheduling ──────────────────────────────────────────────────────
+     * The invitee moves their own call from a link in the day-before message.
+     * Everything needed to police that lives here rather than in a side table,
+     * because the only questions ever asked of it are about one booking.
+     */
+    {
+      name: 'rescheduleToken',
+      type: 'text',
+      index: true,
+      admin: {
+        readOnly: true,
+        description:
+          'Identifies this booking in the reschedule link, and is the only thing authorising the move. Treat it as a password: anyone holding it can change the time. Never paste it into an email or a chat.',
+      },
+    },
+    {
+      type: 'row',
+      fields: [
+        {
+          name: 'rescheduleCount',
+          type: 'number',
+          defaultValue: 0,
+          admin: {
+            width: '50%',
+            readOnly: true,
+            description: 'Moves so far. The link stops working after 2 — past that a person handles it.',
+          },
+        },
+        {
+          name: 'rescheduledFrom',
+          type: 'date',
+          admin: {
+            width: '50%',
+            readOnly: true,
+            date: { pickerAppearance: 'dayAndTime' },
+            description: 'The time this call was at before the most recent move. Empty on a booking that has never moved.',
           },
         },
       ],

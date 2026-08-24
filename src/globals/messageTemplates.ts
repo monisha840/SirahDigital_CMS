@@ -41,9 +41,18 @@ const PLACEHOLDERS = [
   '{{company}} — company name, if the lead gave one',
   '{{interests}} — products they named on the form',
   '{{message}} — what they typed in the enquiry form',
+  '{{rescheduleLink}} — where they move the call themselves; empty inside 24h or after 2 moves',
+  '{{previousDateTime}} — the time before the last move; only in the reschedule email',
 ].join(' · ')
 
-/** Reused by all four message bodies so the reference is never out of date. */
+// A newline, spelled out. The same character the older bodies below get from
+// an escape sequence; this form exists because that escape is the one thing
+// that does not survive being written into this file through a shell, and it
+// fails silently — the string ends early and the template renders half a
+// message. Prefer this in anything added from now on.
+const NL = String.fromCharCode(10)
+
+/** Reused by every message body so the reference is never out of date. */
 const bodyField = (name: string, label: string, defaultValue: string, extra = '') => ({
   name,
   label,
@@ -118,7 +127,8 @@ export const MessageTemplates: GlobalConfig = {
         },
         {
           label: 'Day before',
-          description: 'Sent 24 hours before the call. Still no link — this one is a reminder, not the joining details.',
+          description:
+            'Sent 24 hours before the call. Still no joining link — this one is a reminder. It is also the only message that offers rescheduling, so keep {{rescheduleLink}} in the body: without it the message is held back rather than sent with a broken offer.',
           fields: [
             { name: 'dayBeforeEnabled', type: 'checkbox', defaultValue: true, label: 'Send this message' },
             bodyField(
@@ -130,10 +140,34 @@ export const MessageTemplates: GlobalConfig = {
                 'A quick reminder that your consultation with *SIRAH DIGITAL* is tomorrow.',
                 '',
                 '*When:* {{dateTime}}',
+                '*Duration:* 45 minutes',
+                '*Booked as:* {{fullName}}',
                 '',
-                // Same reasoning as the booking message: "we will find another
-                // time" described a rescheduling service nothing implements.
-                'We will send the joining link an hour before we start. If anything changes, reply here and we will get back to you.',
+                'We will send the joining link an hour before we start.',
+                '',
+                /*
+                 * The reschedule link, and why this is the only message with it.
+                 *
+                 * The booking message is too early to be useful — plans have not
+                 * changed yet — and the hour-before message is too late, because
+                 * there is nothing left to move to and offering it then reads as
+                 * an invitation to drop out twenty minutes before the call.
+                 * Twenty-four hours out is where somebody actually knows whether
+                 * they can make it.
+                 *
+                 * It replaces "reply here and we will get back to you", which was
+                 * accurate but manual: nothing reads inbound WhatsApp, so that
+                 * sentence meant waiting for somebody to open the inbox. This is
+                 * a real route with real limits — the endpoint refuses inside 24
+                 * hours and after two moves, and the link is not printed at all
+                 * when it would be refused. See rescheduleAllowed in
+                 * lib/templates.ts; isSendable holds the whole message back
+                 * rather than let this render as a dangling "Pick another time".
+                 */
+                'Cannot make it? Pick another time here:',
+                '{{rescheduleLink}}',
+                '',
+                'Your old time is freed the moment you choose a new one.',
                 '',
                 '*Team SIRAH DIGITAL*',
               ].join('\n'),
@@ -143,7 +177,7 @@ export const MessageTemplates: GlobalConfig = {
         {
           label: 'Hour before',
           description:
-            'Sent 60 minutes before the call, and the only message that carries {{meetLink}}. If the link is missing this message is held back rather than sent without it — so keep {{meetLink}} in the body.',
+            'Sent 60 minutes before the call, and the only message that carries {{meetLink}}. If the link is missing this message is held back rather than sent without it — so keep {{meetLink}} in the body. Do not add {{rescheduleLink}} here: an hour out there is nothing useful to move to, the endpoint would refuse it anyway, and offering it reads as an invitation to drop out.',
           fields: [
             { name: 'hourBeforeEnabled', type: 'checkbox', defaultValue: true, label: 'Send this message' },
             bodyField(
@@ -167,7 +201,8 @@ export const MessageTemplates: GlobalConfig = {
         },
         {
           label: 'Team email',
-          description: 'Emailed to the address below the moment someone books.',
+          description:
+            'Emailed to the address below the moment someone books, and again whenever they move the call. Nothing here ever goes to the person who booked — sendEmail refuses any recipient outside our own domain.',
           fields: [
             { name: 'teamEmailEnabled', type: 'checkbox', defaultValue: true, label: 'Send this email' },
             {
@@ -203,8 +238,56 @@ export const MessageTemplates: GlobalConfig = {
                 'What they said:',
                 '{{message}}',
                 '',
-                'This booking was read from the connected Google Calendar.',
+                'Booked at sirahdigital.in/book.',
               ].join('\n'),
+            ),
+
+            /*
+             * A second subject/body pair for a call that has moved, rather than
+             * one template with an optional line.
+             *
+             * `render` is a plain regex substitution with no conditionals, so a
+             * "Moved from {{previousDateTime}}" line in the shared body renders
+             * as "Moved from " on every first booking — a blank where the reader
+             * expects a fact, on the majority of emails, to serve the minority.
+             * Two templates is the smaller cost.
+             *
+             * The team wants the same details either way: what the person said
+             * on the form is exactly as relevant the second time. So this
+             * repeats the enquiry block rather than sending a bare "it moved"
+             * that has to be cross-referenced against the first email.
+             */
+            {
+              name: 'teamRescheduleSubject',
+              type: 'text',
+              required: true,
+              defaultValue: 'Consultation MOVED — {{fullName}}, now {{dateTime}}',
+              admin: { description: `Used instead of the subject above when the call has been rescheduled. Placeholders: ${PLACEHOLDERS}` },
+            },
+            bodyField(
+              'teamRescheduleBody',
+              'Email body — rescheduled',
+              [
+                'A consultation call has been MOVED by the person who booked it.',
+                '',
+                'Was:      {{previousDateTime}}',
+                'Now:      {{dateTime}}',
+                '',
+                'Name:     {{fullName}}',
+                'Email:    {{email}}',
+                'Phone:    {{phone}}',
+                'Company:  {{company}}',
+                '',
+                'Link:     {{meetLink}}',
+                '',
+                'Interested in: {{interests}}',
+                '',
+                'What they said:',
+                '{{message}}',
+                '',
+                'The old time has been put back on the calendar as available.',
+              ].join(NL),
+              'Sent instead of the booking email when the call has moved.',
             ),
           ],
         },

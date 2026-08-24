@@ -1,6 +1,8 @@
 import type { Endpoint, PayloadRequest } from 'payload'
 import { MAX_GENERATE_DAYS, MAX_GENERATE_SLOTS } from '../collections/Slots'
 import { normalise } from '../lib/whatsapp'
+import { RESCHEDULE_MAX, rescheduleAllowed } from '../lib/templates'
+import { DAY_BEFORE_OPENS } from '../lib/bookingNotify'
 import {
   addDays,
   daysBetween,
@@ -835,6 +837,356 @@ export const publicBook: Endpoint = {
   },
 }
 
+
+/**
+ * What a reschedule needs off a booking row. A local shape rather than the
+ * generated type, matching how SlotDoc is handled above: these handlers touch
+ * eight fields and depth-0 finds return exactly those.
+ */
+type BookingRow = {
+  id: number | string
+  inviteeName?: string | null
+  startAt: string
+  endAt?: string | null
+  timezone?: string | null
+  status?: string | null
+  calendarEventId?: string | null
+  slot?: unknown
+  rescheduleCount?: number | null
+}
+
+/** Find a booking by its reschedule token, or null. */
+async function bookingByToken(req: PayloadRequest, token: string): Promise<BookingRow | null> {
+  const found = await req.payload.find({
+    collection: 'bookings',
+    where: { rescheduleToken: { equals: token } },
+    limit: 1,
+    depth: 0,
+    overrideAccess: true,
+    req,
+  })
+  return (found.docs[0] as unknown as BookingRow) || null
+}
+
+/**
+ * GET /api/public/reschedule/:token — what the booking page needs to show.
+ *
+ * ── No shared secret, and why that is not a hole ─────────────────────────
+ * Every other write path here is gated on LEAD_INTAKE_SECRET. This one is not,
+ * because the token *is* the credential: 192 bits of randomness, minted per
+ * booking, delivered only to the WhatsApp number on that booking. Requiring the
+ * site's secret as well would add nothing, because the site would supply it on
+ * behalf of anyone holding a link — the same set of people.
+ *
+ * What it does mean is that this is reachable by anyone with a token, so it
+ * answers with the least it can: a first name and the time. No email, no phone
+ * number, no lead. Enough to render "moving your call from Tuesday at 3pm" and
+ * nothing that would make a leaked link worth harvesting.
+ *
+ * An unknown token gets the same 404 as a malformed one. Distinguishing them
+ * would turn this into an oracle for guessing tokens.
+ */
+export const publicRescheduleLookup: Endpoint = {
+  path: '/public/reschedule/:token',
+  method: 'get',
+  handler: async (req: PayloadRequest) => {
+    const token = String(req.routeParams?.token || '')
+    if (token.length < 16) return fail('That reschedule link is not valid.', 404)
+
+    let booking: BookingRow | null = null
+    try {
+      booking = await bookingByToken(req, token)
+    } catch (err) {
+      req.payload.logger.error(`public/reschedule lookup failed: ${(err as Error).message}`)
+      return fail('We could not open that link just now. Please try again.', 500)
+    }
+
+    if (!booking) return fail('That reschedule link is not valid.', 404)
+
+    const verdict = rescheduleAllowed(booking)
+
+    return json({
+      firstName: (booking.inviteeName || '').trim().split(/\s+/)[0] || '',
+      startAt: booking.startAt,
+      timeZone: booking.timezone || DEFAULT_ZONE,
+      movesUsed: booking.rescheduleCount || 0,
+      movesAllowed: RESCHEDULE_MAX,
+      canReschedule: verdict.ok,
+      reason: verdict.reason,
+    })
+  },
+}
+
+/**
+ * POST /api/public/reschedule — move a booking to a different slot.
+ *
+ * ── The order is the design ──────────────────────────────────────────────
+ * Claim the new slot before releasing the old one, and put every step that can
+ * fail before the release. The worst outcome of a failure is then that the
+ * invitee still holds the booking they started with.
+ *
+ * The other order — free the old time first — has a failure mode where somebody
+ * ends up with no call at all: the release succeeds, something downstream does
+ * not, and the old slot has already been taken by a third party in the
+ * intervening milliseconds. There is no way back from that, which is why the
+ * release is last and is the only step after it that is allowed to merely log.
+ *
+ * The calendar event is patched rather than replaced, which keeps the Meet link
+ * valid — see moveBookingEvent.
+ */
+export const publicReschedule: Endpoint = {
+  path: '/public/reschedule',
+  method: 'post',
+  handler: async (req: PayloadRequest) => {
+    const secret = process.env.LEAD_INTAKE_SECRET
+    const auth = req.headers.get('authorization')
+    if (!secret || auth !== `Bearer ${secret}`) return fail('Unauthorized.', 401)
+
+    let body: Record<string, unknown>
+    try {
+      body = (await req.json?.()) as Record<string, unknown>
+    } catch {
+      return fail('Malformed request.', 400)
+    }
+
+    const token = String(body.token || '')
+    const slotId = Number(body.slotId)
+    if (token.length < 16) return fail('That reschedule link is not valid.', 404)
+    if (!Number.isInteger(slotId) || slotId <= 0) return fail('Bad slot id.', 422)
+
+    const { payload } = req
+
+    let booking: BookingRow | null = null
+    try {
+      booking = await bookingByToken(req, token)
+    } catch (err) {
+      payload.logger.error(`public/reschedule lookup failed: ${(err as Error).message}`)
+      return fail('We could not move that booking just now. Please try again.', 500)
+    }
+
+    if (!booking) return fail('That reschedule link is not valid.', 404)
+
+    /*
+     * Re-checked here, even though the link is only printed when it is allowed
+     * and the site checks again before showing the form. Both of those are
+     * courtesies to the reader. A day-before message sits in a chat for hours,
+     * so the same link is tapped from inside the cutoff as a matter of course —
+     * and these two limits are the only thing between a live calendar and
+     * somebody moving a call ten minutes before it starts.
+     */
+    const verdict = rescheduleAllowed(booking)
+    if (!verdict.ok) return fail(verdict.reason, 409)
+
+    const previousSlotId =
+      booking.slot && typeof booking.slot === 'object'
+        ? (booking.slot as { id: number | string }).id
+        : (booking.slot as number | string | null | undefined)
+    const previousStartAt = booking.startAt
+    const previousEndAt = booking.endAt || booking.startAt
+    const previousZone = booking.timezone || DEFAULT_ZONE
+
+    // ── Claim the new time ─────────────────────────────────────────────
+    // The same conditional update /public/book uses: Postgres serialises writes
+    // to the row, so two people racing for one slot give one winner and one 409.
+    let claimed: SlotDoc | undefined
+    try {
+      const res = await payload.update({
+        collection: 'slots',
+        where: { and: [{ id: { equals: slotId } }, { status: { equals: 'open' } }] },
+        data: {
+          status: 'booked',
+          bookedName: booking.inviteeName || undefined,
+          bookedAt: new Date().toISOString(),
+        },
+        overrideAccess: true,
+        context: { skipRevalidate: true },
+        req,
+      })
+      claimed = (res.docs || [])[0] as unknown as SlotDoc | undefined
+    } catch (err) {
+      payload.logger.error(`public/reschedule claim failed: ${(err as Error).message}`)
+      return fail('Could not hold that time. Please try again.', 500)
+    }
+
+    if (!claimed) return fail('That time has just been taken. Please choose another.', 409)
+
+    /** Undo the claim above. Used by every failure between here and the commit. */
+    const releaseNew = async (why: string) => {
+      try {
+        await payload.update({
+          collection: 'slots',
+          id: claimed!.id as number,
+          data: { status: 'open', bookedName: null, bookedAt: null, booking: null },
+          overrideAccess: true,
+          context: { skipRevalidate: true },
+          req,
+        })
+      } catch (err) {
+        payload.logger.error(
+          `slot ${claimed!.id} is STUCK as booked — ${why}, and releasing it also failed: ${(err as Error).message}`,
+        )
+      }
+    }
+
+    // ── Move the calendar event ────────────────────────────────────────
+    if (booking.calendarEventId) {
+      try {
+        const { moveBookingEvent } = await import('../lib/googleCalendar')
+        await moveBookingEvent(booking.calendarEventId, {
+          startAt: claimed.startAt,
+          endAt: claimed.endAt,
+          timeZone: claimed.timeZone,
+        })
+      } catch (err) {
+        payload.logger.error(`public/reschedule calendar move failed: ${(err as Error).message}`)
+        await releaseNew('the calendar event could not be moved')
+        return fail('We could not move that booking just now. Please try again in a moment.', 502)
+      }
+    }
+
+    /*
+     * ── The reminder stamps ────────────────────────────────────────────
+     * Cleared, so the three messages go out again for the new time. That is the
+     * whole point: a booking that has moved has never been confirmed at the time
+     * it now sits on, and the invitee is owed the same sequence they got first
+     * time round.
+     *
+     * dayBeforeSentAt is the exception, and it is the sharpest edge here.
+     * `dayBeforeDue` fires whenever the call is under 24 hours away, so clearing
+     * it after a move into tomorrow means the cron says "your consultation is
+     * tomorrow" within five minutes — true, and pointless, because they chose it
+     * thirty seconds ago. Move to a slot three hours out and the same message
+     * arrives and is simply false.
+     *
+     * So it is stamped as already sent whenever the new time is inside the
+     * day-before window. The hour-before message still fires and still carries
+     * the link, which is the part that matters.
+     */
+    const suppressDayBefore = new Date(claimed.startAt).getTime() - Date.now() <= DAY_BEFORE_OPENS
+
+    try {
+      await payload.update({
+        collection: 'bookings',
+        id: booking.id as number,
+        data: {
+          slot: Number(claimed.id),
+          startAt: claimed.startAt,
+          endAt: claimed.endAt,
+          timezone: claimed.timeZone,
+          rescheduledFrom: previousStartAt,
+          rescheduleCount: (booking.rescheduleCount || 0) + 1,
+          notifications: {
+            bookedSentAt: null,
+            teamEmailSentAt: null,
+            dayBeforeSentAt: suppressDayBefore ? new Date().toISOString() : null,
+            hourBeforeSentAt: null,
+            lastError: null,
+          },
+        },
+        overrideAccess: true,
+        context: { skipRevalidate: true },
+        req,
+      })
+    } catch (err) {
+      payload.logger.error(`public/reschedule booking update failed: ${(err as Error).message}`)
+      /*
+       * The calendar has moved and the row has not. Put the event back before
+       * releasing the new slot, or the two disagree permanently — and the stale
+       * calendar entry is the version a human actually reads.
+       */
+      if (booking.calendarEventId) {
+        try {
+          const { moveBookingEvent } = await import('../lib/googleCalendar')
+          await moveBookingEvent(booking.calendarEventId, {
+            startAt: previousStartAt,
+            endAt: previousEndAt,
+            timeZone: previousZone,
+          })
+        } catch (backErr) {
+          payload.logger.error(
+            `booking ${booking.id}: calendar event is at the NEW time, the row is at the old one, and moving it back failed: ${(backErr as Error).message}`,
+          )
+        }
+      }
+      await releaseNew('the booking row could not be updated')
+      return fail('We could not move that booking just now. Please try again in a moment.', 500)
+    }
+
+    // Point the new slot back at the booking, as /public/book does.
+    // `as number` for the same reason it appears on every id in this file: the
+    // local row types allow string ids, the Postgres adapter only ever issues
+    // integers, and the relationship field is typed to match the adapter.
+    try {
+      await payload.update({
+        collection: 'slots',
+        id: claimed.id as number,
+        data: { booking: booking.id as number },
+        overrideAccess: true,
+        context: { skipRevalidate: true },
+        req,
+      })
+    } catch (err) {
+      // Cosmetic: the booking already names the slot and the admin calendar
+      // reads it that way round. Logged rather than rolled back — undoing a
+      // committed move to repair a back-reference is the larger harm.
+      payload.logger.error(
+        `reschedule: new slot ${claimed.id} not linked back to booking ${booking.id}: ${(err as Error).message}`,
+      )
+    }
+
+    /*
+     * ── Free the old time ──────────────────────────────────────────────
+     * Back to 'open', not 'cancelled'. Cancelled is what the admin delete uses
+     * and it retires the row for good, so using it here would quietly shrink
+     * availability by one slot on every reschedule. Open puts the time back on
+     * sale, which is what was asked for.
+     */
+    if (previousSlotId) {
+      try {
+        await payload.update({
+          collection: 'slots',
+          id: previousSlotId as number,
+          data: { status: 'open', bookedName: null, bookedAt: null, booking: null },
+          overrideAccess: true,
+          context: { skipRevalidate: true },
+          req,
+        })
+      } catch (err) {
+        payload.logger.error(
+          `reschedule: booking ${booking.id} moved, but old slot ${previousSlotId} was not freed and is now unbookable: ${(err as Error).message}`,
+        )
+      }
+    }
+
+    // ── Tell them, and tell the team ───────────────────────────────────
+    // Swallowed like /public/book's: the move is committed, and a gateway that
+    // is down must not report a successful reschedule as a failure. The
+    // five-minute job retries whatever is left unstamped.
+    try {
+      const { notifyNewBooking } = await import('../lib/bookingNotify')
+      const sent = await notifyNewBooking(payload, booking.id)
+      if (sent.errors.length || sent.held.length) {
+        payload.logger.warn(
+          `booking ${booking.id} moved, but its messages are incomplete: ${[...sent.errors, ...sent.held].join(' | ')}`,
+        )
+      }
+    } catch (err) {
+      payload.logger.error(
+        `booking ${booking.id} was moved but nothing was sent about it: ${(err as Error).message}`,
+      )
+    }
+
+    return json({
+      ok: true,
+      bookingId: booking.id,
+      startAt: claimed.startAt,
+      timeZone: claimed.timeZone,
+      movesUsed: (booking.rescheduleCount || 0) + 1,
+      movesAllowed: RESCHEDULE_MAX,
+    })
+  },
+}
+
 export const slotEndpoints = [
   listSlots,
   createSlots,
@@ -842,4 +1194,6 @@ export const slotEndpoints = [
   cancelSlot,
   publicSlots,
   publicBook,
+  publicRescheduleLookup,
+  publicReschedule,
 ]

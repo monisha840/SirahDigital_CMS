@@ -1320,16 +1320,16 @@ export interface Insight {
   order?: number | null;
   title: string;
   /**
-   * 16:10 or wider. The card frame is 16:10 and trims the sides. Without one the card shows a neutral plate of the same shape.
+   * 16:10 or wider — this is the card. The frame is 16:10 and trims the sides, and it renders up to ~1240px on a 2x display, so upload something at least that wide. Without one the card shows a neutral plate of the same shape.
    */
   cover?: (number | null) | Media;
   youtubeUrl?: string | null;
   /**
-   * Not currently rendered — the card shows cover plus title. Kept for a future layout.
+   * Not currently rendered — the card shows cover, title and description. Kept for a future layout.
    */
   category?: string | null;
   /**
-   * Not currently rendered. See above.
+   * Optional. Shown under the title on the card, clamped to two lines — roughly 120 characters before it truncates. Leave empty for a cover-and-title card.
    */
   description?: string | null;
   /**
@@ -1662,7 +1662,7 @@ export interface Booking {
    */
   status?: ('confirmed' | 'cancelled') | null;
   /**
-   * Set when each message is sent. Empty means "not yet"; a value means "done, never again".
+   * Set when each message is sent. Empty means "not yet"; a value means "done". Not "never again": a reschedule clears these on purpose, so the three messages go out afresh for the new time. Read them as "sent for the time currently on this row".
    */
   notifications?: {
     bookedSentAt?: string | null;
@@ -1674,6 +1674,18 @@ export interface Booking {
      */
     lastError?: string | null;
   };
+  /**
+   * Identifies this booking in the reschedule link, and is the only thing authorising the move. Treat it as a password: anyone holding it can change the time. Never paste it into an email or a chat.
+   */
+  rescheduleToken?: string | null;
+  /**
+   * Moves so far. The link stops working after 2 — past that a person handles it.
+   */
+  rescheduleCount?: number | null;
+  /**
+   * The time this call was at before the most recent move. Empty on a booking that has never moved.
+   */
+  rescheduledFrom?: string | null;
   /**
    * Automatically deleted on this date (24 months after the call).
    */
@@ -2811,6 +2823,9 @@ export interface BookingsSelect<T extends boolean = true> {
         hourBeforeSentAt?: T;
         lastError?: T;
       };
+  rescheduleToken?: T;
+  rescheduleCount?: T;
+  rescheduledFrom?: T;
   purgeAt?: T;
   updatedAt?: T;
   createdAt?: T;
@@ -2956,7 +2971,7 @@ export interface SiteSetting {
    */
   whatsappNumber?: string | null;
   /**
-   * TidyCal booking type as "<username>/<slug>", e.g. sirahdigital/45-min-strategy-call. Availability (Mon-Sat 10:00-20:00 IST, Sunday closed) is set in the TidyCal dashboard, not here.
+   * Legacy TidyCal booking type. Nothing reads this field any more — /book is served by the Availability screen and the slots collection. Kept only so an existing value is not silently dropped; availability is Mon-Sat 10:30-19:30 IST, Sunday closed, and it is set there, not here or in TidyCal.
    */
   bookingPath?: string | null;
   /**
@@ -3571,17 +3586,17 @@ export interface MessageTemplate {
   id: number;
   bookedEnabled?: boolean | null;
   /**
-   * Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form
+   * Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form · {{rescheduleLink}} — where they move the call themselves; empty inside 24h or after 2 moves · {{previousDateTime}} — the time before the last move; only in the reschedule email
    */
   bookedBody: string;
   dayBeforeEnabled?: boolean | null;
   /**
-   * Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form
+   * Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form · {{rescheduleLink}} — where they move the call themselves; empty inside 24h or after 2 moves · {{previousDateTime}} — the time before the last move; only in the reschedule email
    */
   dayBeforeBody: string;
   hourBeforeEnabled?: boolean | null;
   /**
-   * Must contain {{meetLink}}. Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form
+   * Must contain {{meetLink}}. Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form · {{rescheduleLink}} — where they move the call themselves; empty inside 24h or after 2 moves · {{previousDateTime}} — the time before the last move; only in the reschedule email
    */
   hourBeforeBody: string;
   teamEmailEnabled?: boolean | null;
@@ -3590,13 +3605,21 @@ export interface MessageTemplate {
    */
   teamEmailTo: string;
   /**
-   * Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form
+   * Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form · {{rescheduleLink}} — where they move the call themselves; empty inside 24h or after 2 moves · {{previousDateTime}} — the time before the last move; only in the reschedule email
    */
   teamEmailSubject: string;
   /**
-   * Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form
+   * Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form · {{rescheduleLink}} — where they move the call themselves; empty inside 24h or after 2 moves · {{previousDateTime}} — the time before the last move; only in the reschedule email
    */
   teamEmailBody: string;
+  /**
+   * Used instead of the subject above when the call has been rescheduled. Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form · {{rescheduleLink}} — where they move the call themselves; empty inside 24h or after 2 moves · {{previousDateTime}} — the time before the last move; only in the reschedule email
+   */
+  teamRescheduleSubject: string;
+  /**
+   * Sent instead of the booking email when the call has moved. Placeholders: {{firstName}} — invitee’s first name · {{fullName}} — invitee’s full name · {{email}} — invitee’s email · {{phone}} — invitee’s WhatsApp number · {{date}} — e.g. Tuesday, 26 August 2026 · {{time}} — e.g. 4:30 pm IST · {{dateTime}} — date and time together · {{meetLink}} — the video call link · {{company}} — company name, if the lead gave one · {{interests}} — products they named on the form · {{message}} — what they typed in the enquiry form · {{rescheduleLink}} — where they move the call themselves; empty inside 24h or after 2 moves · {{previousDateTime}} — the time before the last move; only in the reschedule email
+   */
+  teamRescheduleBody: string;
   _status?: ('draft' | 'published') | null;
   updatedAt?: string | null;
   createdAt?: string | null;
@@ -4068,6 +4091,8 @@ export interface MessageTemplatesSelect<T extends boolean = true> {
   teamEmailTo?: T;
   teamEmailSubject?: T;
   teamEmailBody?: T;
+  teamRescheduleSubject?: T;
+  teamRescheduleBody?: T;
   _status?: T;
   updatedAt?: T;
   createdAt?: T;

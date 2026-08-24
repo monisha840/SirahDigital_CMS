@@ -1,5 +1,5 @@
 import type { Payload } from 'payload'
-import { render, varsFor, isSendable, type TemplateVars } from './templates'
+import { render, varsFor, isSendable, RESCHEDULE_CUTOFF_MS, type TemplateVars } from './templates'
 import { sendWhatsAppText, whatsappReady } from './whatsapp'
 import { sendEmail, emailReady } from './email'
 
@@ -38,8 +38,29 @@ const HOUR = 60 * MINUTE
  * after the call has begun does not, and would read as an apology for being
  * missing rather than a reminder.
  */
-const DAY_BEFORE_OPENS = 24 * HOUR
-const DAY_BEFORE_CLOSES = 90 * MINUTE // stop before the hour-before window
+/*
+ * Exported because the reschedule endpoint has to suppress the day-before
+ * message when a call is moved to within this window. Importing the constant
+ * rather than writing 24 hours again is what keeps the two in step: widen the
+ * reminder window and the suppression widens with it, instead of silently
+ * leaving a gap where the message fires and says the wrong day.
+ */
+export const DAY_BEFORE_OPENS = 24 * HOUR
+/*
+ * Pinned to the reschedule cutoff, not to 90 minutes as it was.
+ *
+ * This message now carries the reschedule link, and isSendable holds the whole
+ * message back when that link is unavailable — which it is, by definition, once
+ * the call is inside the cutoff. Closing the window at the same moment means the
+ * message can only ever become due while the link still works, so that guard is
+ * belt-and-braces rather than something that fires in normal operation.
+ *
+ * It also fixes a smaller lie that predates rescheduling: at 90 minutes, a
+ * booking made three hours in advance got a "your consultation is tomorrow"
+ * reminder about a call happening the same afternoon. Now it gets the booking
+ * confirmation and the hour-before message, which is the honest set.
+ */
+const DAY_BEFORE_CLOSES = RESCHEDULE_CUTOFF_MS
 const HOUR_BEFORE_OPENS = 65 * MINUTE // a little early, so a delayed run still lands
 
 type BookingRow = {
@@ -51,6 +72,9 @@ type BookingRow = {
   timezone?: string | null
   meetLink?: string | null
   status?: string | null
+  rescheduleToken?: string | null
+  rescheduleCount?: number | null
+  rescheduledFrom?: string | null
   lead?: unknown
   notifications?: {
     bookedSentAt?: string | null
@@ -72,6 +96,8 @@ type Templates = {
   teamEmailTo?: string | null
   teamEmailSubject?: string | null
   teamEmailBody?: string | null
+  teamRescheduleSubject?: string | null
+  teamRescheduleBody?: string | null
 }
 
 export type NotifyResult = {
@@ -138,11 +164,20 @@ async function sendWhatsApp({
   vars,
   phone,
   requiresLink,
+  requiresRescheduleLink,
 }: {
   body: string
   vars: TemplateVars
   phone: string
   requiresLink: boolean
+  /*
+   * Set by the day-before message only, and only when its body actually asks
+   * for the link. Passing it unconditionally would hold back a day-before
+   * message that an editor had deliberately rewritten without the reschedule
+   * offer — the guard is there to stop a broken sentence, not to mandate a
+   * sentence.
+   */
+  requiresRescheduleLink?: boolean
 }): Promise<{ sent: boolean; held?: string }> {
   if (!whatsappReady) return { sent: false, held: 'WhatsApp gateway not configured.' }
   if (!phone) return { sent: false, held: 'No WhatsApp number on this booking (no matching lead).' }
@@ -154,7 +189,13 @@ async function sendWhatsApp({
     console.error(`[booking] unknown template placeholder(s): ${unknown.join(', ')}`)
   }
 
-  const check = isSendable({ text, requiresLink, meetLink: vars.meetLink })
+  const check = isSendable({
+    text,
+    requiresLink,
+    meetLink: vars.meetLink,
+    requiresRescheduleLink,
+    rescheduleLink: vars.rescheduleLink,
+  })
   if (!check.ok) return { sent: false, held: check.reason }
 
   await sendWhatsAppText({ to: phone, text })
@@ -227,8 +268,29 @@ async function sendImmediate(
       if (!emailReady) {
         out.held.push(`booking ${booking.id} team email: email not configured.`)
       } else {
-        const subject = render(templates.teamEmailSubject || 'New consultation booked', vars).text
-        const body = render(templates.teamEmailBody || '', vars).text
+        /*
+         * A moved call gets its own subject and body.
+         *
+         * The team needs the same enquiry details either way — what somebody
+         * said on the form is exactly as relevant the second time — but the
+         * subject has to say MOVED, because the alternative is two near-identical
+         * "New consultation booked" emails for one person and whoever reads the
+         * inbox deciding which one is true. `previousDateTime` carries the old
+         * time so the change is legible without cross-referencing.
+         *
+         * Falls back to the booking pair when the reschedule fields are blank,
+         * which is every global saved before those fields existed.
+         */
+        const moved = (booking.rescheduleCount || 0) > 0 && Boolean(booking.rescheduledFrom)
+        const subjectTemplate =
+          (moved ? templates.teamRescheduleSubject : templates.teamEmailSubject) ||
+          templates.teamEmailSubject ||
+          (moved ? 'Consultation moved' : 'New consultation booked')
+        const bodyTemplate =
+          (moved ? templates.teamRescheduleBody : templates.teamEmailBody) || templates.teamEmailBody || ''
+
+        const subject = render(subjectTemplate, vars).text
+        const body = render(bodyTemplate, vars).text
         await sendEmail({
           to: templates.teamEmailTo || 'support@sirahdigital.in',
           subject,
@@ -372,6 +434,13 @@ export async function runBookingNotifications(payload: Payload): Promise<NotifyR
           vars,
           phone,
           requiresLink: false,
+          /*
+           * Only when the body actually asks for the link. An editor who
+           * rewrites this message without the reschedule offer should still get
+           * their message delivered — the guard exists to stop "Pick another
+           * time here:" followed by nothing, not to require the sentence.
+           */
+          requiresRescheduleLink: (templates.dayBeforeBody || '').includes('{{rescheduleLink}}'),
         })
         if (r.sent) {
           await stamp(payload, booking, 'dayBeforeSentAt')

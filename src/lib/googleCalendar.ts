@@ -172,10 +172,22 @@ export async function ensureMeetLink(event: CalendarEvent): Promise<string> {
  * and not before, so it cannot be buried in a week-old thread. Silence here, and
  * the WhatsApp confirmation is what tells them the booking landed.
  *
- * The cost is real and worth naming: the invitee gets no calendar invitation, so
- * the call does not appear in *their* calendar. If that turns out to matter more
- * than link timing, this is the one flag to change — and the hour-before message
- * then becomes a reminder rather than a delivery.
+ * ── No attendees, either ─────────────────────────────────────────────────
+ * The invitee used to be added as an attendee with the invitation suppressed.
+ * That is now gone, and the reason is stronger than link timing: an attendee is
+ * the one handle by which Google can mail somebody regardless of what this file
+ * asks for. Drag the event an inch in the Calendar UI and every attendee is
+ * notified — our `sendUpdates=none` has no say in it, because that edit is not
+ * our request. The requirement is that the person who booked never receives
+ * email from us, and an attendee list is a standing exception to it.
+ *
+ * The team loses nothing: `description` already carries the name, the email and
+ * the WhatsApp number, which is what anyone opening the event actually reads.
+ *
+ * The cost is real and worth naming: the call appears on nobody's calendar but
+ * ours, so WhatsApp is the only place the invitee holds the time and the link.
+ * That is the trade that was chosen — three messages they will actually see,
+ * against a calendar entry that arrives with an email nobody wanted.
  */
 export async function createBookingEvent({
   summary,
@@ -192,11 +204,19 @@ export async function createBookingEvent({
   endAt: string
   timeZone: string
   attendeeEmail: string
+  /*
+   * Accepted and unused since the attendee list was removed. Kept so the two
+   * call sites do not have to change shape, and because a display name is the
+   * first thing wanted back if attendees ever return.
+   */
   attendeeName?: string
 }): Promise<CalendarEvent> {
   // requestId must be unique per conference. There is no event id yet — it is
   // being created — so the instant plus the invitee is the stable key, which
   // also means a retried create cannot spawn two conferences for one booking.
+  //
+  // attendeeEmail survives in the signature for exactly this, and for the
+  // description the caller builds. It is no longer an attendee.
   const requestId = `sirah-${Date.parse(startAt)}-${attendeeEmail.replace(/[^a-z0-9]/gi, '').slice(0, 20)}`
 
   return (await call(
@@ -208,7 +228,6 @@ export async function createBookingEvent({
         description,
         start: { dateTime: startAt, timeZone },
         end: { dateTime: endAt, timeZone },
-        attendees: [{ email: attendeeEmail, displayName: attendeeName || undefined }],
         conferenceData: {
           createRequest: {
             requestId,
@@ -222,6 +241,41 @@ export async function createBookingEvent({
          * and the one nobody can edit would be the louder of the two.
          */
         reminders: { useDefault: false, overrides: [] },
+      }),
+    },
+  )) as CalendarEvent
+}
+
+/**
+ * Move an existing booking to a new time.
+ *
+ * ── Patched, not recreated ───────────────────────────────────────────────
+ * The obvious alternative is to cancel the event and create a fresh one at the
+ * new time. That would work and it would cost the Meet link: a new event mints a
+ * new conference, Google often reports it as `pending`, and the link arrives
+ * some seconds later. The hour-before message is the delivery mechanism for that
+ * link and is held back entirely when it is missing, so a reschedule made an
+ * hour and ten minutes before the call could leave the invitee with no way in.
+ *
+ * Patching keeps the event id and the conference attached to it, which means the
+ * link on the booking row stays valid and nothing downstream has to wait.
+ *
+ * sendUpdates=none, like everything else here. There are no attendees to notify
+ * any more, so this is belt and braces rather than the load-bearing part — but
+ * if attendees are ever restored, a reschedule is precisely the change Google
+ * would email about, and it should still not.
+ */
+export async function moveBookingEvent(
+  eventId: string,
+  { startAt, endAt, timeZone }: { startAt: string; endAt: string; timeZone: string },
+): Promise<CalendarEvent> {
+  return (await call(
+    `/calendars/${encodeURIComponent(CALENDAR_ID)}/events/${encodeURIComponent(eventId)}?sendUpdates=none`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        start: { dateTime: startAt, timeZone },
+        end: { dateTime: endAt, timeZone },
       }),
     },
   )) as CalendarEvent
