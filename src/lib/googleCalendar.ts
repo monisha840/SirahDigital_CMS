@@ -311,3 +311,138 @@ export async function cancelBookingEvent(eventId: string): Promise<void> {
     },
   )
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+ * Free/busy — what the calendar says is already spoken for
+ * ════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Which calendars count as "the founder is not free".
+ *
+ * Defaults to the one bookings land on, which is the common case. It is a list
+ * because "busy" and "where bookings go" are not the same question: build slots,
+ * a shared team calendar or a personal one all make an hour unofferable without
+ * being the calendar we write to. Comma-separated in
+ * BOOKING_BUSY_CALENDAR_IDS — and note that a calendar the connected account
+ * cannot see is an error below, not silently empty.
+ */
+const BUSY_CALENDAR_IDS = (process.env.BOOKING_BUSY_CALENDAR_IDS || CALENDAR_ID)
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+
+/** A span the calendar is not free, as epoch milliseconds. */
+export type BusyInterval = { start: number; end: number }
+
+/*
+ * freeBusy takes a window rather than a page cursor, and Google rejects very
+ * long ones. 60 days is comfortably inside what it accepts and divides our
+ * 45-day default into a single request, so the loop below is usually one pass.
+ */
+const FREEBUSY_CHUNK_DAYS = 60
+
+/**
+ * Merge overlapping spans so a slot can be tested against a short, sorted list.
+ *
+ * Two calendars holding the same meeting, or a build slot sitting inside a
+ * longer block, would otherwise be two entries that each have to be checked.
+ */
+export function mergeIntervals(list: BusyInterval[]): BusyInterval[] {
+  const sorted = [...list].sort((a, b) => a.start - b.start)
+  const out: BusyInterval[] = []
+
+  for (const iv of sorted) {
+    const last = out[out.length - 1]
+    if (last && iv.start <= last.end) last.end = Math.max(last.end, iv.end)
+    else out.push({ ...iv })
+  }
+
+  return out
+}
+
+/**
+ * Does [startMs, endMs) run into anything busy?
+ *
+ * Half-open on both sides, which is the whole of the back-to-back rule: a
+ * 15:00–15:45 slot against a 15:45 meeting is not a clash, and offering it is
+ * correct. Strict `<` and `>` are what say that — `<=` would quietly delete the
+ * slot before every meeting.
+ */
+export function overlapsBusy(startMs: number, endMs: number, busy: BusyInterval[]): boolean {
+  return busy.some((b) => startMs < b.end && endMs > b.start)
+}
+
+/**
+ * Everything the calendar is already committed to, between two instants.
+ *
+ * ── Why freeBusy and not events.list ─────────────────────────────────────
+ * events.list caps at 250 per page and this calendar runs to a dozen entries a
+ * day, so a 45-day read would truncate — and a truncated read means the tail of
+ * the window looks completely free. Silently offering a fortnight that is
+ * already full is a worse failure than any amount of extra code. freeBusy
+ * answers with merged blocks instead of events, so there is no page to fall off
+ * the end of.
+ *
+ * It also gets two judgements right for free. An event marked "Free" (Google's
+ * `transparent`) is not returned, so a placeholder or an FYI does not block
+ * bookings. A declined invitation is not returned either.
+ *
+ * ── Errors are thrown, never swallowed ───────────────────────────────────
+ * Google reports a calendar it could not read *inside* a 200 response, in
+ * `calendars[id].errors` — a wrong id or a revoked share comes back as HTTP OK
+ * with an empty busy array. Read casually, that is indistinguishable from a
+ * clear diary, and the caller would offer every hour of it. So a per-calendar
+ * error is raised as a failure of the whole query, and the caller decides what
+ * an unverifiable calendar means. It must never mean "free".
+ */
+export async function busyIntervals({
+  timeMin,
+  timeMax,
+}: {
+  timeMin: string
+  timeMax: string
+}): Promise<BusyInterval[]> {
+  const from = Date.parse(timeMin)
+  const to = Date.parse(timeMax)
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return []
+
+  const chunk = FREEBUSY_CHUNK_DAYS * 24 * 60 * 60 * 1000
+  const collected: BusyInterval[] = []
+
+  for (let cursor = from; cursor < to; cursor += chunk) {
+    const windowEnd = Math.min(cursor + chunk, to)
+
+    const body = (await call('/freeBusy', {
+      method: 'POST',
+      body: JSON.stringify({
+        timeMin: new Date(cursor).toISOString(),
+        timeMax: new Date(windowEnd).toISOString(),
+        items: BUSY_CALENDAR_IDS.map((id) => ({ id })),
+      }),
+    })) as {
+      calendars?: Record<string, { busy?: { start: string; end: string }[]; errors?: { reason?: string }[] }>
+    }
+
+    for (const id of BUSY_CALENDAR_IDS) {
+      const entry = body.calendars?.[id]
+
+      // Absent is as bad as errored: we asked about this calendar and got no
+      // answer, so we do not know that it is free.
+      if (!entry) throw new Error(`freeBusy returned nothing for calendar ${id}`)
+      if (entry.errors?.length) {
+        const reasons = entry.errors.map((e) => e.reason || 'unknown').join(', ')
+        throw new Error(`freeBusy could not read calendar ${id}: ${reasons}`)
+      }
+
+      for (const span of entry.busy || []) {
+        const start = Date.parse(span.start)
+        const end = Date.parse(span.end)
+        if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+          collected.push({ start, end })
+        }
+      }
+    }
+  }
+
+  return mergeIntervals(collected)
+}

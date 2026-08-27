@@ -562,20 +562,72 @@ export const publicSlots: Endpoint = {
         req,
       })
 
-      const slots = res.docs.map((d) => {
-        const doc = d as unknown as SlotDoc
-        return {
-          id: String(doc.id),
-          local_date: doc.localDate,
-          local_time: doc.localTime,
-          starts_at: doc.startAt,
-          duration_minutes: doc.durationMinutes,
-          time_zone: doc.timeZone,
-        }
-      })
+      /*
+       * ── The calendar has the final say ───────────────────────────────────
+       * Everything above is the *offer*: a grid someone generated in the admin
+       * saying which hours we are in principle willing to sell. It is not
+       * availability. A row only leaves it when the website itself books it, so
+       * a meeting the founder typed straight into Google Calendar — a build
+       * slot, Friday prayers, a call agreed over WhatsApp — left the slot
+       * sitting there `open` and the picker went on offering an hour that was
+       * long gone. That was the bug: the page showed the timetable and called it
+       * the diary.
+       *
+       * So the generated grid is now intersected with what Google says is
+       * actually free, every request. The CMS decides what we would *like* to
+       * offer; the calendar decides what is left.
+       */
+      const docs = res.docs.map((d) => d as unknown as SlotDoc)
+
+      const { busyIntervals, overlapsBusy, calendarReady } = await import('../lib/googleCalendar')
+
+      let free = docs
+      if (calendarReady && docs.length) {
+        /*
+         * Asked over the span of the slots we actually hold, not the whole
+         * `days` window — if the grid only runs three weeks out there is no
+         * reason to ask Google about the fourth.
+         */
+        const busy = await busyIntervals({
+          timeMin: docs[0]!.startAt,
+          timeMax: new Date(
+            Math.max(...docs.map((d) => Date.parse(d.endAt || d.startAt))),
+          ).toISOString(),
+        })
+
+        free = docs.filter((doc) => {
+          const start = Date.parse(doc.startAt)
+          const end = doc.endAt
+            ? Date.parse(doc.endAt)
+            : start + (doc.durationMinutes || 45) * 60_000
+          return !overlapsBusy(start, end, busy)
+        })
+      }
+
+      const slots = free.map((doc) => ({
+        id: String(doc.id),
+        local_date: doc.localDate,
+        local_time: doc.localTime,
+        starts_at: doc.startAt,
+        duration_minutes: doc.durationMinutes,
+        time_zone: doc.timeZone,
+      }))
 
       return json({ slots, timeZone: DEFAULT_ZONE })
     } catch (err) {
+      /*
+       * Covers a failed free/busy read as well as a failed database read, and
+       * deliberately fails *closed* for both — no times, rather than the
+       * unverified grid.
+       *
+       * Serving the grid when Google is unreachable is the tempting option and
+       * it is wrong twice over. It re-creates exactly the bug this endpoint was
+       * changed to fix, at the moment we are least able to detect it. And it is
+       * a lie the next step cannot sustain: /public/book has to reach the same
+       * API to create the event, so a visitor sent past this point fills in the
+       * whole form and is refused at the end. Better to show the empty state,
+       * which offers them an email address, than a time that cannot be booked.
+       */
       req.payload.logger.error(`public/slots failed: ${(err as Error).message}`)
       return fail('Could not load available times.', 500)
     }
@@ -674,6 +726,47 @@ export const publicBook: Endpoint = {
         payload.logger.error(
           `slot ${claimed!.id} is STUCK as booked — ${why}, and releasing it also failed: ${(err as Error).message}`,
         )
+      }
+    }
+
+    /*
+     * ── Is it still free on the calendar? ────────────────────────────────
+     * The claim above proves nobody else booked this row. It proves nothing
+     * about the founder's diary: /public/slots filters against Google, but it
+     * filtered whenever the visitor loaded the page, and a meeting typed in
+     * since then leaves a stale tab offering an hour that is now taken. The
+     * page is the only thing standing between that tab and a double booking, so
+     * the check is repeated here where it is authoritative rather than trusted
+     * from the client.
+     *
+     * Cheap enough to be unremarkable — one small request, against a window of
+     * a single slot, on a path that is about to call Google anyway to create
+     * the event.
+     *
+     * A failure here releases and refuses rather than booking on regardless.
+     * The same reasoning as the listing endpoint: if we cannot reach Google we
+     * cannot create the event either, so carrying on only moves the failure
+     * later and leaves a slot marked booked behind it.
+     */
+    {
+      const { busyIntervals, overlapsBusy, calendarReady } = await import('../lib/googleCalendar')
+
+      if (calendarReady) {
+        try {
+          const busy = await busyIntervals({ timeMin: claimed.startAt, timeMax: claimed.endAt })
+
+          if (overlapsBusy(Date.parse(claimed.startAt), Date.parse(claimed.endAt), busy)) {
+            await release('the calendar is no longer free at that time')
+            // 409 like the lost-claim case above, and worded the same way, so
+            // the site's existing `taken` branch re-fetches and lets them pick
+            // again. To the visitor the two are the same event: it went.
+            return fail('That time has just been taken. Please choose another.', 409)
+          }
+        } catch (err) {
+          payload.logger.error(`public/book busy check failed: ${(err as Error).message}`)
+          await release('the calendar could not be checked')
+          return fail('We could not confirm that time. Please try again.', 503)
+        }
       }
     }
 
