@@ -1,4 +1,5 @@
 import type { Endpoint, PayloadRequest } from 'payload'
+import { after } from 'next/server'
 import { MAX_GENERATE_DAYS, MAX_GENERATE_SLOTS } from '../collections/Slots'
 import { normalise } from '../lib/whatsapp'
 import { RESCHEDULE_MAX, rescheduleAllowed } from '../lib/templates'
@@ -729,6 +730,27 @@ export const publicBook: Endpoint = {
       }
     }
 
+    // The phone number lives on the lead the site stored a moment ago. No lead
+    // means no WhatsApp for this booking — handled by sending nothing, never by
+    // guessing a number. Started here and awaited after the calendar check below:
+    // the two are independent, so they run side by side rather than back to back.
+    type LeadRow = { id: number; firstName?: string | null; lastName?: string | null; phone?: string | null }
+    const leadLookup: Promise<LeadRow | null> = payload
+      .find({
+        collection: 'leads',
+        where: { email: { equals: email } },
+        sort: '-createdAt',
+        limit: 1,
+        depth: 0,
+        overrideAccess: true,
+        req,
+      })
+      .then((found) => (found.docs[0] as unknown as LeadRow) || null)
+      .catch((err) => {
+        payload.logger.error(`public/book lead lookup failed: ${(err as Error).message}`)
+        return null
+      })
+
     /*
      * ── Is it still free on the calendar? ────────────────────────────────
      * The claim above proves nobody else booked this row. It proves nothing
@@ -770,25 +792,7 @@ export const publicBook: Endpoint = {
       }
     }
 
-    // The phone number lives on the lead the site stored a moment ago. No lead
-    // means no WhatsApp for this booking — handled by sending nothing, never by
-    // guessing a number.
-    type LeadRow = { id: number; firstName?: string | null; lastName?: string | null; phone?: string | null }
-    let lead: LeadRow | null = null
-    try {
-      const found = await payload.find({
-        collection: 'leads',
-        where: { email: { equals: email } },
-        sort: '-createdAt',
-        limit: 1,
-        depth: 0,
-        overrideAccess: true,
-        req,
-      })
-      lead = (found.docs[0] as unknown as LeadRow) || null
-    } catch (err) {
-      payload.logger.error(`public/book lead lookup failed: ${(err as Error).message}`)
-    }
+    const lead = await leadLookup
 
     const inviteeName = name || [lead?.firstName, lead?.lastName].filter(Boolean).join(' ') || ''
 
@@ -894,18 +898,35 @@ export const publicBook: Endpoint = {
        * picks it up on its next pass — which is exactly the behaviour this
        * endpoint had before, now as a fallback rather than the only path.
        */
-      try {
-        const { notifyNewBooking } = await import('../lib/bookingNotify')
-        const sent = await notifyNewBooking(payload, booking.id)
-        if (sent.errors.length || sent.held.length) {
-          payload.logger.warn(
-            `booking ${booking.id} confirmation incomplete: ${[...sent.errors, ...sent.held].join(' | ')}`,
+      /*
+       * ── Sent after the response, not before it ────────────────────────
+       * The WhatsApp message and the team email are two more network round
+       * trips run one after the other, plus a database stamp after each. Held
+       * inside the request they were the single largest part of the "Confirming…"
+       * wait, for work the visitor does not need to see finish. `after` runs it
+       * once the response is on its way (waitUntil on Vercel), so the function
+       * is kept alive for it. If `after` is unavailable the send happens inline,
+       * which is the old, slower, still-correct behaviour.
+       */
+      const sendConfirmation = async () => {
+        try {
+          const { notifyNewBooking } = await import('../lib/bookingNotify')
+          const sent = await notifyNewBooking(payload, booking.id)
+          if (sent.errors.length || sent.held.length) {
+            payload.logger.warn(
+              `booking ${booking.id} confirmation incomplete: ${[...sent.errors, ...sent.held].join(' | ')}`,
+            )
+          }
+        } catch (err) {
+          payload.logger.error(
+            `booking ${booking.id} was created but its confirmation did not send: ${(err as Error).message}`,
           )
         }
-      } catch (err) {
-        payload.logger.error(
-          `booking ${booking.id} was created but its confirmation did not send: ${(err as Error).message}`,
-        )
+      }
+      try {
+        after(sendConfirmation)
+      } catch {
+        await sendConfirmation()
       }
 
       return json({ ok: true, bookingId: String(booking.id), startAt: claimed.startAt, timeZone: claimed.timeZone }, 201)
